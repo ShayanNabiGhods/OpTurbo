@@ -1,0 +1,6 @@
+VERSION='2ddp_host'
+FLUENT_ARCH='win64'
+FLUENT_RELEASE='fluent24.2.0'
+CSOURCES=' $(SRC)ad_sources.c'
+HSOURCES=''
+GPU_SUPPORT='off'
