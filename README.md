@@ -1,4 +1,4 @@
-# OpTurbo V0.0.1
+# OpTurbo V1.0.0
 
 OpTurbo is a beginner-readable Tkinter desktop application that connects the
 existing DAWT geometry, SpaceClaim, ANSYS Meshing, Fluent, and BEM programs to
