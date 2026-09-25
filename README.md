@@ -128,7 +128,6 @@ resources/
 └── cfd_tables/             # blade, airfoil, and operating-point data
 ```
 
-`AGENTS.md` contains mandatory maintenance rules for future coding agents.
 
 ## Verification
 
@@ -144,7 +143,7 @@ A complete integration test requires valid local licenses and installations
 of FreeCAD, SpaceClaim, Workbench/Meshing, and Fluent. Use **Evaluate current
 design** for that test before committing a long optimization run.
 
-V0.0.1 also includes a conservative three-candidate validation optimization:
+V1.0.0 also includes a conservative three-candidate validation optimization:
 
 ```powershell
 python scripts\run_small_optimization.py
