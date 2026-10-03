@@ -24,8 +24,12 @@ class DesignParameters:
     hub_origin_r: float = 0.0
     duct_origin_x: float = -72.0
     duct_origin_r: float = 475.0
+    design_type: str = "airfoil"
     duct_chord: float = 200.0
+    duct_thickness: float = 2.0
     duct_angle_deg: float = 0.0
+    duct_flange_length: float = 300.0
+    duct_flange_angle_deg: float = 85.0
     duct_reverse: bool = True
     duct_points: int = 180
     parsec: dict = field(default_factory=lambda: {

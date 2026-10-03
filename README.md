@@ -3,7 +3,7 @@
 OpTurbo is a beginner-readable Tkinter desktop application that connects the
 existing DAWT geometry, SpaceClaim, ANSYS Meshing, Fluent, and BEM programs to
 a genetic algorithm. Its objective is to maximize the final power coefficient
-`Cp` by changing whichever duct angle, chord, and PARSEC variables the user selects.
+`Cp` by changing whichever variables the user selects for the active duct design.
 
 The original four source folders remain unchanged outside this project. Their
 capabilities are integrated as one standalone application: Python engineering
@@ -16,7 +16,7 @@ Use Windows Python 3.10 or newer because FreeCAD, SpaceClaim, Workbench, and
 Fluent are Windows programs in the supplied setup:
 
 ```powershell
-cd "C:\Project Saves\Python Codes\Complete Code - Copy\OpTurbo V0.0.1"
+cd "C:\Project Saves\Python Codes\OpTurbo"
 python run.py
 ```
 
@@ -31,9 +31,11 @@ folder such as `C:\OpTurbo\Projects\baseline-study`.
 ## Application layout
 
 - **Project** — a compact two-column layout for project storage and executable paths.
-- **Design** — selectable duct angle of attack, chord length, and PARSEC values,
-  with exact FreeCAD-derived domain outlines and a zoomed duct view. Unticked
-  variables are visibly disabled. During a run, both views follow the candidate.
+- **Design** — choose an **airfoil** or **flanged** duct. Airfoil designs expose
+  duct angle, chord, and full upper/lower PARSEC controls. Flanged designs expose
+  the lower PARSEC surface, chord, wall thickness, flange length, and flange
+  angle. Tick only the variables to optimize; unticked variables remain fixed.
+  The domain and duct previews update for the selected family and during a run.
 - **Workflow Settings** — geometry, mesh, and CFD/BEM controls combined into one
   two-column page. SpaceClaim remains protected and is intentionally not editable.
 - **Optimization** — single-design evaluation, GA controls, progress, and the
@@ -43,9 +45,10 @@ folder such as `C:\OpTurbo\Projects\baseline-study`.
 
 ## Four-stage candidate pipeline
 
-1. **FreeCAD geometry** receives domain settings and the candidate PARSEC
-   dictionary. It writes the five individual STEP files and
-   `profile_assembly.step` into the candidate result folder.
+1. **FreeCAD geometry** receives the selected duct family, domain settings, and
+   the candidate PARSEC dictionary. The airfoil duct and the flanged duct are
+   exported as closed planar faces (not wires). It writes the five individual
+   STEP files and `profile_assembly.step` into the candidate result folder.
 2. **SpaceClaim** is not rewritten or parameterized. OpTurbo copies the
    assembly to the exact path expected by the recorded script:
    `C:\OpTurbo\Temp Files\profile_assembly.step`. The original script writes
@@ -128,7 +131,7 @@ resources/
 └── cfd_tables/             # blade, airfoil, and operating-point data
 ```
 
-`AGENTS.md` contains mandatory maintenance rules for future coding agents.
+`AGENTS.md` contains local contributor rules and is intentionally ignored by Git.
 
 ## Verification
 
@@ -150,7 +153,8 @@ V0.0.1 also includes a conservative three-candidate validation optimization:
 python scripts\run_small_optimization.py
 ```
 
-It changes only duct angle of attack, upper crest location, upper crest
-height, and lower crest height. The default two generations, population of
-two, two CFD outer iterations, and 20 Fluent iterations are intended to test
-the complete system rather than produce a converged engineering optimum.
+It changes only airfoil-specific variables: duct angle of attack, upper crest
+location, upper crest height, and lower crest height. The default two
+generations, population of two, two CFD outer iterations, and 20 Fluent
+iterations are intended to test the complete system rather than produce a
+converged engineering optimum.

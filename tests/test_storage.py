@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from opturbo.models import ProjectConfig
+from opturbo.models import ProjectConfig, default_flanged_variables
 from opturbo.storage import ProjectStore
 
 
@@ -29,6 +29,12 @@ class StorageTests(unittest.TestCase):
         values = {item.key: item.value for item in config.design_variables}
         self.assertEqual(values["geometry.duct_angle_deg"], 3.0)
         self.assertEqual(values["geometry.duct_chord"], 215.0)
+
+    def test_flanged_project_only_exposes_flanged_variables(self):
+        config = ProjectConfig.from_dict({"geometry": {"design_type": "flanged"}})
+        keys = {item.key for item in config.design_variables}
+        self.assertEqual(keys, {item.key for item in default_flanged_variables()})
+        self.assertNotIn("upper.crest_height", keys)
 
 
 if __name__ == "__main__":

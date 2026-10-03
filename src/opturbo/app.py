@@ -20,9 +20,10 @@ from .models import (
     ProjectConfig,
     ToolPaths,
     VariableSpec,
+    default_design_variables,
 )
 from .optimizer import GeneticAlgorithm
-from .parsec import nested_parameters, profile, validate_profile
+from .parsec import lower_profile, nested_parameters, profile, validate_lower_profile, validate_profile
 from .pipeline import PipelineRunner
 from .preview import actuator_outline, hub_outline, outer_domain_outline, resolution_outline
 from .storage import ProjectStore, atomic_json
@@ -54,8 +55,12 @@ LABELS = {
     "hub_origin_r": "Hub origin r (mm)",
     "duct_origin_x": "Duct origin x (mm)",
     "duct_origin_r": "Duct origin r (mm)",
+    "design_type": "Duct design type",
     "duct_chord": "Duct chord (mm)",
+    "duct_thickness": "Duct wall thickness (mm)",
     "duct_angle_deg": "Duct angle (deg)",
+    "duct_flange_length": "Duct flange length (mm)",
+    "duct_flange_angle_deg": "Duct flange angle (deg)",
     "duct_reverse": "Reverse duct profile",
     "duct_points": "Duct spline points",
     "global_size_cm": "Global element size (cm)",
@@ -177,6 +182,7 @@ class OpTurboApp(tk.Tk):
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
         self.variable_controls: dict[str, tuple[ttk.Widget, ...]] = {}
+        self.design_variable_sets: dict[str, list[VariableSpec]] = {}
         self._configure_style()
         self._build_menu()
         self._build_layout()
@@ -260,8 +266,16 @@ class OpTurboApp(tk.Tk):
         right = ttk.Frame(tab, padding=8)
         tab.add(left, weight=2)
         tab.add(right, weight=3)
-        ttk.Label(left, text="Duct design variables", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(left, text="Includes duct angle, chord, and PARSEC shape controls. Unticked rows are fixed.",
+        ttk.Label(left, text="Duct design", style="Title.TLabel").pack(anchor="w")
+        chooser = ttk.Frame(left)
+        chooser.pack(fill="x", pady=(4, 6))
+        ttk.Label(chooser, text="Design type:").pack(side="left")
+        self.design_type_var = tk.StringVar(value=self.config_model.geometry.design_type)
+        design_picker = ttk.Combobox(chooser, textvariable=self.design_type_var, state="readonly",
+                                     values=("airfoil", "flanged"), width=16)
+        design_picker.pack(side="left", padx=8)
+        design_picker.bind("<<ComboboxSelected>>", self._switch_design_type)
+        ttk.Label(left, text="Only variables used by the selected design are shown. Unticked rows stay fixed.",
                   style="Subtitle.TLabel", wraplength=500).pack(anchor="w", pady=(0, 8))
         scroll = ScrollableFrame(left)
         scroll.pack(fill="both", expand=True)
@@ -299,7 +313,8 @@ class OpTurboApp(tk.Tk):
         mesh.grid(row=0, column=1, sticky="nsew", padx=(7, 0), pady=4)
         cfd.grid(row=1, column=1, sticky="nsew", padx=(7, 0), pady=4)
         self._add_dataclass_form(geometry, "geometry", GeometrySettings,
-                                 exclude={"duct_angle_deg", "duct_chord"})
+                                 exclude={"design_type", "duct_angle_deg", "duct_chord", "duct_thickness",
+                                          "duct_flange_length", "duct_flange_angle_deg"})
         self._add_dataclass_form(mesh, "mesh", MeshSettings)
         self._add_dataclass_form(cfd, "cfd", CfdSettings)
 
@@ -433,6 +448,31 @@ class OpTurboApp(tk.Tk):
             for item in fields(settings):
                 variable = self.field_vars[(section, item.name)]
                 variable.set(getattr(settings, item.name))
+        self.design_type_var.set(self.config_model.geometry.design_type)
+        self.design_variable_sets = {self.config_model.geometry.design_type: self.config_model.design_variables[:]}
+        self._make_parsec_rows()
+        self._draw_design()
+
+    def _switch_design_type(self, _event: object | None = None) -> None:
+        """Replace the Design-tab choices with those valid for the selected duct."""
+        selected = self.design_type_var.get()
+        current = self.config_model.geometry.design_type
+        if selected == current or selected not in {"airfoil", "flanged"}:
+            return
+        current_rows = []
+        for spec, enabled, value, minimum, maximum in self.parsec_rows:
+            try:
+                current_rows.append(VariableSpec(spec.key, spec.label, float(value.get()),
+                                                 float(minimum.get()), float(maximum.get()), enabled.get()))
+            except ValueError:
+                current_rows.append(spec)
+        self.design_variable_sets[current] = current_rows
+        next_rows = self.design_variable_sets.get(selected, default_design_variables(selected))
+        self.config_model.geometry = replace(self.config_model.geometry, design_type=selected,
+                                             duct_reverse=(selected == "airfoil"))
+        self.field_vars[("geometry", "design_type")].set(selected)
+        self.field_vars[("geometry", "duct_reverse")].set(selected == "airfoil")
+        self.config_model.design_variables = next_rows[:]
         self._make_parsec_rows()
         self._draw_design()
 
@@ -462,7 +502,6 @@ class OpTurboApp(tk.Tk):
             if not parsed.minimum <= parsed.value <= parsed.maximum:
                 raise ValueError(f"{parsed.label}: current value must be inside its bounds.")
             variables.append(parsed)
-        validate_profile(nested_parameters(variables))
         model = ProjectConfig(
             project_name=self.project_name_var.get().strip() or "Untitled optimization",
             save_dir=self.save_dir_var.get(), tools=build("tools", ToolPaths),
@@ -474,13 +513,22 @@ class OpTurboApp(tk.Tk):
             for item in variables if item.key.startswith("geometry.")
         }
         model.geometry = replace(model.geometry, **geometry_values)
+        if model.geometry.design_type == "flanged":
+            validate_lower_profile(nested_parameters(variables))
+        else:
+            validate_profile(nested_parameters(variables))
         self._validate_positive_settings(model)
         return model
 
     @staticmethod
     def _validate_positive_settings(config: ProjectConfig) -> None:
-        if config.geometry.duct_chord <= 0 or config.geometry.domain_length <= 0 or config.geometry.domain_height <= 0:
+        if config.geometry.design_type not in {"airfoil", "flanged"}:
+            raise ValueError("Choose either the airfoil or flanged duct design.")
+        if (config.geometry.duct_chord <= 0 or config.geometry.duct_thickness <= 0 or
+                config.geometry.domain_length <= 0 or config.geometry.domain_height <= 0):
             raise ValueError("Geometry lengths must be positive.")
+        if config.geometry.design_type == "flanged" and config.geometry.duct_flange_length <= 0:
+            raise ValueError("Flange length must be positive.")
         mesh_sizes = (
             config.mesh.global_size_cm,
             config.mesh.resolution_size_cm,
@@ -569,14 +617,14 @@ class OpTurboApp(tk.Tk):
         except Exception as error:
             messagebox.showerror("Invalid design", str(error))
 
-    def _preview_values(self) -> tuple[GeometrySettings, dict]:
+    def _preview_values(self) -> tuple[GeometrySettings, list[VariableSpec]]:
         variables = []
         for spec, enabled, value, minimum, maximum in self.parsec_rows:
             try:
                 variables.append(VariableSpec(spec.key, spec.label, float(value.get()),
                                               float(minimum.get()), float(maximum.get()), enabled.get()))
             except ValueError:
-                return self.config_model.geometry, nested_parameters(self.config_model.design_variables)
+                return self.config_model.geometry, self.config_model.design_variables
         geometry = self.config_model.geometry
         try:
             geometry = GeometrySettings(**{
@@ -591,18 +639,18 @@ class OpTurboApp(tk.Tk):
             for item in variables if item.key.startswith("geometry.")
         }
         geometry = replace(geometry, **geometry_values)
-        return geometry, nested_parameters(variables)
+        return geometry, variables
 
     def _draw_design(self) -> None:
         if not hasattr(self, "domain_canvas") or not self.parsec_rows:
             return
-        geometry, parsec_values = self._preview_values()
+        geometry, variables = self._preview_values()
         try:
-            x_values, upper, lower = profile(parsec_values, 140)
+            top, bottom = self._duct_outline(geometry, variables)
         except Exception:
             return
-        self._draw_domain(self.domain_canvas, geometry, x_values, upper, lower)
-        self._draw_duct(self.duct_canvas, geometry, x_values, upper, lower)
+        self._draw_domain(self.domain_canvas, geometry, top, bottom)
+        self._draw_duct(self.duct_canvas, geometry, top, bottom)
 
     @staticmethod
     def _map_points(canvas: tk.Canvas, points: list[tuple[float, float]], bounds: tuple[float, float, float, float], margin: int = 35) -> list[float]:
@@ -629,7 +677,57 @@ class OpTurboApp(tk.Tk):
             bottom.append((axial, center + geometry.duct_chord * low))
         return top, bottom
 
-    def _draw_domain(self, canvas: tk.Canvas, geometry: GeometrySettings, x: list[float], upper: list[float], lower: list[float]) -> None:
+    def _flanged_duct_points(self, geometry: GeometrySettings, x_values: list[float], lower: list[float]) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+        """Mirror the FreeCAD lower-PARSEC/flange construction for the preview."""
+        import math
+        if geometry.duct_reverse:
+            lower = [-value for value in lower]
+        path = [(geometry.duct_origin_x + geometry.duct_chord * x,
+                 geometry.duct_origin_r + geometry.duct_chord * y) for x, y in zip(x_values, lower)]
+        angle = math.radians(geometry.duct_flange_angle_deg)
+        end = (path[-1][0] + geometry.duct_flange_length * math.cos(angle),
+               path[-1][1] + geometry.duct_flange_length * math.sin(angle))
+
+        def normal(first: tuple[float, float], second: tuple[float, float]) -> tuple[float, float]:
+            dx, dy = second[0] - first[0], second[1] - first[1]
+            length = math.hypot(dx, dy)
+            return -dy / length, dx / length
+
+        half = geometry.duct_thickness / 2
+        left, right = [], []
+        for index, point in enumerate(path):
+            nx, ny = normal(path[max(0, index - 1)], path[min(len(path) - 1, index + 1)])
+            left.append((point[0] + nx * half, point[1] + ny * half))
+            right.append((point[0] - nx * half, point[1] - ny * half))
+        nx, ny = normal(path[-2], path[-1])
+        fx, fy = normal(path[-1], end)
+
+        def intersect(point: tuple[float, float], direction: tuple[float, float], other: tuple[float, float], other_direction: tuple[float, float]) -> tuple[float, float]:
+            cross = direction[0] * other_direction[1] - direction[1] * other_direction[0]
+            if abs(cross) < 1e-12:
+                raise ValueError("PARSEC and flange tangents must not be parallel.")
+            dx, dy = other[0] - point[0], other[1] - point[1]
+            scale = (dx * other_direction[1] - dy * other_direction[0]) / cross
+            return point[0] + direction[0] * scale, point[1] + direction[1] * scale
+
+        tail = path[-1]
+        tangent = (tail[0] - path[-2][0], tail[1] - path[-2][1])
+        flange_tangent = (end[0] - tail[0], end[1] - tail[1])
+        left[-1] = intersect((tail[0] + nx * half, tail[1] + ny * half), tangent,
+                             (tail[0] + fx * half, tail[1] + fy * half), flange_tangent)
+        right[-1] = intersect((tail[0] - nx * half, tail[1] - ny * half), tangent,
+                              (tail[0] - fx * half, tail[1] - fy * half), flange_tangent)
+        return left + [(end[0] + fx * half, end[1] + fy * half)], right + [(end[0] - fx * half, end[1] - fy * half)]
+
+    def _duct_outline(self, geometry: GeometrySettings, variables: list[VariableSpec]) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+        parameters = nested_parameters(variables)
+        if geometry.design_type == "flanged":
+            x_values, lower = lower_profile(parameters, 140)
+            return self._flanged_duct_points(geometry, x_values, lower)
+        x_values, upper, lower = profile(parameters, 140)
+        return self._duct_points(geometry, x_values, upper, lower)
+
+    def _draw_domain(self, canvas: tk.Canvas, geometry: GeometrySettings, top: list[tuple[float, float]], bottom: list[tuple[float, float]]) -> None:
         canvas.delete("all")
         xmin, xmax = geometry.domain_origin_x, geometry.domain_origin_x + geometry.domain_length
         ymin, ymax = geometry.domain_origin_r, geometry.domain_origin_r + geometry.domain_height
@@ -650,7 +748,6 @@ class OpTurboApp(tk.Tk):
                        (geometry.actuator_origin_x, geometry.hub_origin_r + geometry.hub_radius +
                         geometry.actuator_radial_span)]
         canvas.create_line(*self._map_points(canvas, disk_center, bounds), fill="#08724c", width=3)
-        top, bottom = self._duct_points(geometry, x, upper, lower)
         duct = top + list(reversed(bottom))
         canvas.create_polygon(*self._map_points(canvas, duct, bounds), fill="#efb1b5",
                               outline="#b52732", width=2)
@@ -659,9 +756,8 @@ class OpTurboApp(tk.Tk):
         canvas.create_text(14, 14, text="Axisymmetric domain preview (x–r, mm)", anchor="nw",
                            font=("Segoe UI", 10, "bold"), fill="#26313e")
 
-    def _draw_duct(self, canvas: tk.Canvas, geometry: GeometrySettings, x: list[float], upper: list[float], lower: list[float]) -> None:
+    def _draw_duct(self, canvas: tk.Canvas, geometry: GeometrySettings, top: list[tuple[float, float]], bottom: list[tuple[float, float]]) -> None:
         canvas.delete("all")
-        top, bottom = self._duct_points(geometry, x, upper, lower)
         points = top + bottom
         xmin, xmax = min(p[0] for p in points), max(p[0] for p in points)
         ymin, ymax = min(p[1] for p in points), max(p[1] for p in points)
@@ -669,7 +765,7 @@ class OpTurboApp(tk.Tk):
         bounds = (xmin - pad_x, xmax + pad_x, ymin - pad_y, ymax + pad_y)
         polygon = top + list(reversed(bottom))
         canvas.create_polygon(*self._map_points(canvas, polygon, bounds), fill="#dcecff", outline="#245f9e", width=2)
-        canvas.create_text(14, 14, text="PARSEC duct detail", anchor="nw", font=("Segoe UI", 10, "bold"), fill="#26313e")
+        canvas.create_text(14, 14, text=f"{geometry.design_type.title()} duct detail", anchor="nw", font=("Segoe UI", 10, "bold"), fill="#26313e")
 
     def _require_saved_project(self) -> bool:
         if not self._save_project():
@@ -809,17 +905,17 @@ class OpTurboApp(tk.Tk):
         variables = [VariableSpec(item.key, item.label, genome.get(item.key, item.value),
                                   item.minimum, item.maximum, item.optimize)
                      for item in self.config_model.design_variables]
-        try:
-            x_values, upper, lower = profile(nested_parameters(variables), 140)
-        except Exception:
-            return
         geometry_values = {
             item.key.split(".", 1)[1]: item.value
             for item in variables if item.key.startswith("geometry.")
         }
         geometry = replace(self.config_model.geometry, **geometry_values)
-        self._draw_domain(self.domain_canvas, geometry, x_values, upper, lower)
-        self._draw_duct(self.duct_canvas, geometry, x_values, upper, lower)
+        try:
+            top, bottom = self._duct_outline(geometry, variables)
+        except Exception:
+            return
+        self._draw_domain(self.domain_canvas, geometry, top, bottom)
+        self._draw_duct(self.duct_canvas, geometry, top, bottom)
 
     def _refresh_results(self) -> None:
         for item in self.results_tree.get_children():

@@ -12,7 +12,7 @@ import time
 from typing import Callable
 
 from ..models import GeometrySettings, ProjectConfig, VariableSpec
-from ..parsec import nested_parameters, validate_profile
+from ..parsec import nested_parameters, validate_lower_profile, validate_profile
 from .process import executable_path, run_streaming, windows_path
 
 
@@ -33,7 +33,10 @@ class PipelineRunner:
         }
         geometry = replace(config.geometry, **geometry_overrides)
         parsec = nested_parameters(variables)
-        validate_profile(parsec)
+        if geometry.design_type == "flanged":
+            validate_lower_profile(parsec)
+        else:
+            validate_profile(parsec)
         candidate_dir.mkdir(parents=True, exist_ok=True)
         geometry_dir = candidate_dir / "01_geometry"
         cad_dir = candidate_dir / "02_spaceclaim"
@@ -42,7 +45,7 @@ class PipelineRunner:
         for folder in (geometry_dir, cad_dir, mesh_dir, cfd_dir):
             folder.mkdir(exist_ok=True)
         (candidate_dir / "candidate.json").write_text(json.dumps({
-            "parsec": parsec, "geometry": asdict(geometry),
+            "design_type": geometry.design_type, "parsec": parsec, "geometry": asdict(geometry),
             "mesh": asdict(config.mesh), "cfd": asdict(config.cfd),
         }, indent=2), encoding="utf-8")
         assembly = self._geometry(config, geometry, parsec, geometry_dir)

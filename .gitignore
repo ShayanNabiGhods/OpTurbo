@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+AGENTS.md
+.pytest_cache/
+.coverage
+build/
+dist/
+*.egg-info/
+.venv/
+**/workspace/
+resources/**/iteration_history/
+resources/**/mesh_handoff*

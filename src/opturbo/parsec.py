@@ -76,6 +76,16 @@ def profile(parameters: dict[str, dict[str, float]], points: int = 180) -> tuple
     )
 
 
+def lower_profile(parameters: dict[str, dict[str, float]], points: int = 180) -> tuple[list[float], list[float]]:
+    """Return normalized coordinates for the lower PARSEC surface only."""
+    if points < 10:
+        raise ValueError("At least 10 duct points are required.")
+    lower_coefficients = coefficients(parameters["lower"], -1.0)
+    x_values = [index / (points - 1) for index in range(points)]
+    return x_values, [sum(value * x ** (index + 0.5) for index, value in enumerate(lower_coefficients))
+                      for x in x_values]
+
+
 def validate_profile(parameters: dict[str, dict[str, float]]) -> None:
     """Reject obviously invalid or self-intersecting duct profiles."""
     for side in ("upper", "lower"):
@@ -88,3 +98,13 @@ def validate_profile(parameters: dict[str, dict[str, float]]) -> None:
     minimum_thickness = min(a - b for a, b in zip(upper[1:-1], lower[1:-1]))
     if minimum_thickness <= 1e-5:
         raise ValueError("The upper and lower PARSEC surfaces intersect.")
+
+
+def validate_lower_profile(parameters: dict[str, dict[str, float]]) -> None:
+    """Validate the single PARSEC surface used by the flanged duct."""
+    values = parameters["lower"]
+    if values["leading_edge_radius"] <= 0:
+        raise ValueError("lower leading-edge radius must be positive.")
+    if not 0 < values["crest_location"] < 1:
+        raise ValueError("lower crest location must lie between 0 and 1.")
+    lower_profile(parameters, 120)

@@ -55,8 +55,12 @@ class GeometrySettings:
     hub_origin_r: float = 0.0
     duct_origin_x: float = -72.0
     duct_origin_r: float = 475.0
+    design_type: str = "airfoil"
     duct_chord: float = 200.0
+    duct_thickness: float = 2.0
     duct_angle_deg: float = 0.0
+    duct_flange_length: float = 300.0
+    duct_flange_angle_deg: float = 85.0
     duct_reverse: bool = True
     duct_points: int = 180
 
@@ -128,8 +132,8 @@ def default_parsec_variables() -> list[VariableSpec]:
     return [VariableSpec(*row) for row in rows]
 
 
-def default_design_variables() -> list[VariableSpec]:
-    """Return geometry and PARSEC variables displayed on the Design tab."""
+def default_airfoil_variables() -> list[VariableSpec]:
+    """Return variables for the original, full-airfoil duct."""
     geometry = [
         VariableSpec("geometry.duct_angle_deg", "Duct angle of attack (deg)",
                      0.0, -8.0, 8.0, False),
@@ -137,6 +141,30 @@ def default_design_variables() -> list[VariableSpec]:
                      200.0, 160.0, 240.0, False),
     ]
     return geometry + default_parsec_variables()
+
+
+def default_flanged_variables() -> list[VariableSpec]:
+    """Return variables for the lower-PARSEC duct with a trailing flange."""
+    geometry = [
+        VariableSpec("geometry.duct_chord", "Duct chord length (mm)",
+                     100.0, 60.0, 240.0, False),
+        VariableSpec("geometry.duct_thickness", "Duct wall thickness (mm)",
+                     2.0, 0.5, 10.0, False),
+        VariableSpec("geometry.duct_flange_length", "Flange length (mm)",
+                     300.0, 100.0, 600.0, False),
+        VariableSpec("geometry.duct_flange_angle_deg", "Flange angle (deg)",
+                     85.0, 45.0, 130.0, False),
+    ]
+    return geometry + [spec for spec in default_parsec_variables() if spec.key.startswith("lower.")]
+
+
+def default_design_variables(design_type: str = "airfoil") -> list[VariableSpec]:
+    """Return only the optimization choices applicable to the duct family."""
+    if design_type == "flanged":
+        return default_flanged_variables()
+    if design_type != "airfoil":
+        raise ValueError(f"Unknown duct design type: {design_type}")
+    return default_airfoil_variables()
 
 
 @dataclass
@@ -159,16 +187,26 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectConfig":
         """Rebuild a configuration loaded from JSON."""
-        geometry = GeometrySettings(**data.get("geometry", {}))
+        geometry_data = data.get("geometry", {})
+        geometry = GeometrySettings(**geometry_data)
         raw_variables = data.get("design_variables", data.get("parsec_variables", []))
         variables = [VariableSpec(**item) for item in raw_variables]
+        defaults = default_design_variables(geometry.design_type)
+        allowed = {item.key for item in defaults}
+        variables = [item for item in variables if item.key in allowed]
         existing = {item.key for item in variables}
-        for default in default_design_variables():
+        for default in defaults:
             if default.key not in existing:
                 if default.key == "geometry.duct_angle_deg":
                     default.value = geometry.duct_angle_deg
-                elif default.key == "geometry.duct_chord":
+                elif default.key == "geometry.duct_chord" and "duct_chord" in geometry_data:
                     default.value = geometry.duct_chord
+                elif default.key == "geometry.duct_thickness" and "duct_thickness" in geometry_data:
+                    default.value = geometry.duct_thickness
+                elif default.key == "geometry.duct_flange_length" and "duct_flange_length" in geometry_data:
+                    default.value = geometry.duct_flange_length
+                elif default.key == "geometry.duct_flange_angle_deg" and "duct_flange_angle_deg" in geometry_data:
+                    default.value = geometry.duct_flange_angle_deg
                 variables.insert(0 if default.key.startswith("geometry.") else len(variables), default)
         return cls(
             project_name=data.get("project_name", "Untitled optimization"),
@@ -178,7 +216,7 @@ class ProjectConfig:
             mesh=MeshSettings(**data.get("mesh", {})),
             cfd=CfdSettings(**data.get("cfd", {})),
             ga=GaSettings(**data.get("ga", {})),
-            design_variables=variables or default_design_variables(),
+            design_variables=variables or defaults,
         )
 
     @property
