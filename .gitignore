@@ -1,12 +1,31 @@
+# Generated FreeCAD exports and local workflow workspaces
+output/
+**/workspace/
+resources/**/iteration_history/
+resources/**/mesh_handoff*
+
+# Python bytecode, test output, and local caches
 __pycache__/
 *.py[cod]
-AGENTS.md
 .pytest_cache/
 .coverage
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts and local Python environments
 build/
 dist/
 *.egg-info/
 .venv/
-**/workspace/
-resources/**/iteration_history/
-resources/**/mesh_handoff*
+venv/
+env/
+
+# Local contributor instructions and editor metadata
+AGENTS.md
+.idea/
+.vscode/
+*.swp
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
