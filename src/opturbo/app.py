@@ -13,6 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Callable
 
 from .models import (
+    AccessibilitySettings,
     CfdSettings,
     GaSettings,
     GeometrySettings,
@@ -96,6 +97,88 @@ LABELS = {
 }
 
 
+FIELD_HELP = {
+    "freecad": "Command-line FreeCAD executable used to create candidate STEP geometry.",
+    "spaceclaim": "SpaceClaim executable used with the protected recorded import script.",
+    "workbench": "ANSYS Workbench executable used to generate the mesh.",
+    "fluent": "Fluent executable used for the CFD and BEM coupling run.",
+    "handoff_dir": "Fixed folder required by the recorded SpaceClaim script; it cannot be changed here.",
+    "domain_length": "Axial length of the outer CFD domain in millimetres.",
+    "domain_height": "Radial height of the outer CFD domain in millimetres.",
+    "domain_origin_x": "x-coordinate of the outer-domain inlet boundary in millimetres.",
+    "domain_origin_r": "r-coordinate of the axisymmetric domain axis in millimetres.",
+    "resolution_length": "Axial length of the locally refined mesh region in millimetres.",
+    "resolution_inlet_radius": "Radius of the rounded inlet to the refined region in millimetres.",
+    "resolution_origin_x": "x-coordinate where the refined region begins in millimetres.",
+    "resolution_origin_r": "r-coordinate of the refined-region axis in millimetres.",
+    "actuator_radial_span": "Blade-swept radial height represented by the actuator disk in millimetres.",
+    "actuator_thickness": "Finite axial thickness of the actuator disk in millimetres.",
+    "actuator_origin_x": "x-coordinate of the actuator-disk centre plane in millimetres.",
+    "hub_length": "Axial hub length in millimetres.",
+    "hub_radius": "Hub outer radius in millimetres.",
+    "hub_origin_x": "x-coordinate of the hub centre in millimetres.",
+    "hub_origin_r": "r-coordinate of the hub centre; normally the axis, 0 mm.",
+    "duct_origin_x": "x-coordinate of the duct leading edge in millimetres.",
+    "duct_origin_r": "r-coordinate of the duct leading edge in millimetres.",
+    "duct_reverse": "Mirrors the PARSEC surface about its reference line before geometry is created.",
+    "duct_points": "Number of spline samples used to construct the duct; higher values make a smoother curve.",
+    "global_size_cm": "Default mesh element size away from locally refined regions, in centimetres.",
+    "curvature_angle_deg": "Curvature angle used by the mesher to refine curved geometry.",
+    "resolution_size_cm": "Target mesh size inside the resolution region, in centimetres.",
+    "duct_size_cm": "Target mesh size along the duct wall, in centimetres.",
+    "hub_size_cm": "Target mesh size along the hub wall, in centimetres.",
+    "inflation_layers": "Number of boundary-layer mesh layers grown from walls.",
+    "inflation_max_thickness_cm": "Maximum total boundary-layer thickness, in centimetres.",
+    "flow_speed_m_s": "Free-stream inlet speed used by Fluent and BEM, in metres per second.",
+    "density_kg_m3": "Air density used by the CFD and BEM models, in kilograms per cubic metre.",
+    "viscosity_pa_s": "Dynamic air viscosity used by the CFD and BEM models, in pascal-seconds.",
+    "rotor_radius_m": "Rotor tip radius used by the BEM model, in metres.",
+    "hub_radius_m": "Rotor hub radius used by the BEM model, in metres.",
+    "blades": "Number of rotor blades represented by the actuator-disk model.",
+    "omega_rad_s": "Rotor angular speed used by BEM, in radians per second.",
+    "pitch_deg": "Blade pitch angle used by BEM, in degrees.",
+    "stations": "Number of radial BEM stations from hub to tip.",
+    "max_outer_iterations": "Maximum Fluent/BEM coupling iterations for each candidate.",
+    "fluent_iterations": "Fluent solver iterations performed during each coupling iteration.",
+    "tolerance": "Cp/Ct change required to consider the coupled solution converged.",
+    "relaxation": "Fraction of each new source-term update applied to Fluent, from 0 to 1.",
+    "processors": "Number of Fluent processes to request for each CFD evaluation.",
+    "keep_iteration_data": "Keep every intermediate Fluent data file instead of only the final result.",
+    "population_size": "Number of candidate designs evaluated in each GA generation.",
+    "generations": "Number of GA generations to evaluate.",
+    "elite_count": "Best candidates copied unchanged into the next generation.",
+    "tournament_size": "Number of candidates compared when selecting each parent.",
+    "crossover_rate": "Probability that each child combines values from both parents.",
+    "mutation_rate": "Probability that each gene is randomly perturbed in a child.",
+    "mutation_scale": "Standard deviation of a mutation as a fraction of that variable's range.",
+    "random_seed": "Fixed seed that makes the optimization sequence reproducible.",
+}
+
+
+class ToolTip:
+    """Show a short explanation when the pointer rests over a GUI control."""
+
+    def __init__(self, widget: tk.Misc, text: str):
+        self.widget, self.text, self.window = widget, text, None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _event: object = None) -> None:
+        if self.window or not self.text:
+            return
+        x, y = self.widget.winfo_rootx() + 16, self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        self.window.wm_geometry(f"+{x}+{y}")
+        tk.Label(self.window, text=self.text, justify="left", wraplength=360,
+                 background="#20242a", foreground="#f5f7fa", padx=8, pady=5).pack()
+
+    def _hide(self, _event: object = None) -> None:
+        if self.window:
+            self.window.destroy()
+            self.window = None
+
+
 class ScrollableFrame(ttk.Frame):
     """A reusable vertically scrollable settings panel."""
 
@@ -117,26 +200,35 @@ class LinePlot(tk.Canvas):
 
     COLORS = ("#2f6fed", "#e05d44", "#1a9c68", "#9b59b6")
 
-    def __init__(self, parent: tk.Misc, title: str, **kwargs):
+    def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str, **kwargs):
         super().__init__(parent, background="white", highlightthickness=1,
                          highlightbackground="#c8ccd2", **kwargs)
-        self.title = title
+        self.title, self.x_label, self.y_label = title, x_label, y_label
         self.series: list[tuple[str, list[float]]] = []
+        self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
         self.bind("<Configure>", lambda _event: self.redraw())
 
     def set_series(self, series: list[tuple[str, list[float]]]) -> None:
         self.series = series
         self.redraw()
 
+    def set_palette(self, palette: dict[str, str]) -> None:
+        """Apply the active application colours and redraw the chart."""
+        self.palette = palette
+        self.configure(background=palette["canvas"], highlightbackground=palette["axis"])
+        self.redraw()
+
     def redraw(self) -> None:
         self.delete("all")
         width, height = max(self.winfo_width(), 200), max(self.winfo_height(), 140)
         left, top, right, bottom = 52, 30, width - 18, height - 35
-        self.create_text(12, 10, text=self.title, anchor="nw", font=("Segoe UI", 10, "bold"), fill="#20242a")
-        self.create_line(left, top, left, bottom, right, bottom, fill="#69717d")
+        self.create_text(12, 10, text=self.title, anchor="nw", font=("Segoe UI", 10, "bold"), fill=self.palette["text"])
+        self.create_line(left, top, left, bottom, right, bottom, fill=self.palette["axis"])
+        self.create_text((left + right) / 2, height - 8, text=self.x_label, fill=self.palette["muted"], font=("Segoe UI", 8))
+        self.create_text(8, (top + bottom) / 2, text=self.y_label, angle=90, fill=self.palette["muted"], font=("Segoe UI", 8))
         values = [value for _, items in self.series for value in items]
         if not values:
-            self.create_text(width / 2, height / 2, text="No results yet", fill="#7b818a")
+            self.create_text(width / 2, height / 2, text="No results yet", fill=self.palette["muted"])
             return
         low, high = min(values), max(values)
         if abs(high - low) < 1e-12:
@@ -145,8 +237,8 @@ class LinePlot(tk.Canvas):
         for tick in range(5):
             y = bottom - tick * (bottom - top) / 4
             value = low + tick * (high - low) / 4
-            self.create_line(left, y, right, y, fill="#edf0f3")
-            self.create_text(left - 6, y, text=f"{value:.3g}", anchor="e", fill="#606771", font=("Segoe UI", 8))
+            self.create_line(left, y, right, y, fill=self.palette["grid"])
+            self.create_text(left - 6, y, text=f"{value:.3g}", anchor="e", fill=self.palette["muted"], font=("Segoe UI", 8))
         for series_index, (name, items) in enumerate(self.series):
             color = self.COLORS[series_index % len(self.COLORS)]
             coordinates: list[float] = []
@@ -161,7 +253,7 @@ class LinePlot(tk.Canvas):
                                  coordinates[0] + 2, coordinates[1] + 2, fill=color)
             legend_x = right - 90 * (len(self.series) - series_index)
             self.create_line(legend_x, 17, legend_x + 18, 17, fill=color, width=3)
-            self.create_text(legend_x + 23, 17, text=name, anchor="w", font=("Segoe UI", 8))
+            self.create_text(legend_x + 23, 17, text=name, anchor="w", font=("Segoe UI", 8), fill=self.palette["text"])
 
 
 class OpTurboApp(tk.Tk):
@@ -183,20 +275,65 @@ class OpTurboApp(tk.Tk):
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
         self.variable_controls: dict[str, tuple[ttk.Widget, ...]] = {}
         self.design_variable_sets: dict[str, list[VariableSpec]] = {}
+        self.palette = self._theme_palette(AccessibilitySettings())
         self._configure_style()
         self._build_menu()
         self._build_layout()
         self._load_model_into_fields()
         self.after(100, self._poll_events)
 
+    @staticmethod
+    def _theme_palette(settings: AccessibilitySettings) -> dict[str, str]:
+        """Return accessible colours for the selected appearance settings."""
+        if settings.high_contrast:
+            return {"background": "#000000", "canvas": "#000000", "surface": "#111111", "text": "#ffffff",
+                    "muted": "#e0e0e0", "accent": "#00d9ff", "grid": "#4a4a4a", "axis": "#ffffff"}
+        if settings.theme == "dark":
+            return {"background": "#1b1e23", "canvas": "#20242a", "surface": "#292e36", "text": "#eef2f7",
+                    "muted": "#c0c8d2", "accent": "#70b7ff", "grid": "#3a424d", "axis": "#b8c1cc"}
+        return {"background": "#f4f6f8", "canvas": "#ffffff", "surface": "#ffffff", "text": "#1d2a3a",
+                "muted": "#59636f", "accent": "#2f6fed", "grid": "#edf0f3", "axis": "#69717d"}
+
     def _configure_style(self) -> None:
+        """Apply the current visual scale and colour palette to ttk widgets."""
         style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Title.TLabel", font=("Segoe UI", 16, "bold"), foreground="#1d2a3a")
-        style.configure("Subtitle.TLabel", font=("Segoe UI", 9), foreground="#59636f")
-        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"))
-        style.configure("Status.TLabel", padding=(8, 4), foreground="#344050")
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        percent = int(self.text_scale_var.get()) if hasattr(self, "text_scale_var") else 100
+        size = max(8, round(9 * percent / 100))
+        colors = self.palette
+        self.configure(background=colors["background"])
+        style.configure("TFrame", background=colors["background"])
+        style.configure("TLabel", background=colors["background"], foreground=colors["text"], font=("Segoe UI", size))
+        style.configure("TLabelframe", background=colors["background"], foreground=colors["text"])
+        style.configure("TLabelframe.Label", background=colors["background"], foreground=colors["text"], font=("Segoe UI", size, "bold"))
+        style.configure("TButton", font=("Segoe UI", size), padding=(7, 4))
+        style.configure("TEntry", fieldbackground=colors["surface"], foreground=colors["text"])
+        style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"])
+        style.configure("Treeview", background=colors["surface"], fieldbackground=colors["surface"], foreground=colors["text"], font=("Segoe UI", size), rowheight=max(22, size + 12))
+        style.configure("Treeview.Heading", font=("Segoe UI", size, "bold"))
+        style.configure("Title.TLabel", font=("Segoe UI", max(14, size + 6), "bold"), foreground=colors["text"])
+        style.configure("Subtitle.TLabel", font=("Segoe UI", size), foreground=colors["muted"])
+        style.configure("Accent.TButton", font=("Segoe UI", size, "bold"))
+        style.configure("Status.TLabel", padding=(8, 4), foreground=colors["muted"])
+
+    def _apply_accessibility(self, _event: object | None = None) -> None:
+        """Apply appearance preferences immediately without restarting the app."""
+        settings = AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
+                                         high_contrast=self.high_contrast_var.get())
+        self.palette = self._theme_palette(settings)
+        self.config_model.accessibility = settings
+        self._configure_style()
+        for canvas in (getattr(self, "domain_canvas", None), getattr(self, "duct_canvas", None)):
+            if canvas:
+                canvas.configure(background=self.palette["canvas"])
+        for plot in (getattr(self, "performance_plot", None), getattr(self, "bem_plot", None)):
+            if plot:
+                plot.set_palette({key: self.palette[key] for key in ("canvas", "text", "muted", "grid", "axis")})
+        if hasattr(self, "log_text"):
+            self.log_text.configure(background=self.palette["canvas"], foreground=self.palette["text"],
+                                    insertbackground=self.palette["text"])
+        self._draw_design()
 
     def _build_menu(self) -> None:
         menu = tk.Menu(self)
@@ -229,6 +366,7 @@ class OpTurboApp(tk.Tk):
         self._build_workflow_tab()
         self._build_optimization_tab()
         self._build_monitor_tab()
+        self._build_accessibility_tab()
 
     def _build_project_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=16)
@@ -372,10 +510,44 @@ class OpTurboApp(tk.Tk):
         xscroll.grid(row=1, column=0, sticky="ew")
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
-        self.performance_plot = LinePlot(performance, "Optimization objective history", height=260)
+        self.performance_plot = LinePlot(performance, "Optimization objective history", "Evaluation (-)", "Cp / Ct (-)", height=260)
         self.performance_plot.pack(fill="both", expand=True)
-        self.bem_plot = LinePlot(bem, "Latest radial BEM solution", height=260)
+        self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)", height=260)
         self.bem_plot.pack(fill="both", expand=True)
+
+    def _build_accessibility_tab(self) -> None:
+        """Build visual and keyboard-use settings that are safe to change at runtime."""
+        tab = ttk.Frame(self.notebook, padding=16)
+        self.notebook.add(tab, text="  Accessibility  ")
+        panel = ttk.LabelFrame(tab, text="Display and interaction", padding=14)
+        panel.pack(anchor="nw", fill="x")
+        ttk.Label(panel, text="Appearance", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(panel, text="Choose a colour theme, enlarge text, or enable high contrast. Changes apply immediately and are saved with the project.",
+                  style="Subtitle.TLabel", wraplength=680, justify="left").grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 14))
+        self.theme_var = tk.StringVar(value="light")
+        self.text_scale_var = tk.StringVar(value="100")
+        self.high_contrast_var = tk.BooleanVar(value=False)
+        ttk.Label(panel, text="Theme").grid(row=2, column=0, sticky="w", pady=5)
+        theme = ttk.Combobox(panel, textvariable=self.theme_var, values=("light", "dark"), state="readonly", width=14)
+        theme.grid(row=2, column=1, sticky="w", pady=5)
+        ttk.Label(panel, text="Light uses the default palette; dark reduces screen brightness.", style="Subtitle.TLabel", wraplength=420).grid(row=3, column=1, sticky="w")
+        ttk.Label(panel, text="Text size").grid(row=4, column=0, sticky="w", pady=(12, 5))
+        text_scale = ttk.Combobox(panel, textvariable=self.text_scale_var, values=("90", "100", "110", "125", "150"), state="readonly", width=14)
+        text_scale.grid(row=4, column=1, sticky="w", pady=(12, 5))
+        ttk.Label(panel, text="Scales interface text from 90% to 150%.", style="Subtitle.TLabel").grid(row=5, column=1, sticky="w")
+        contrast = ttk.Checkbutton(panel, text="High contrast", variable=self.high_contrast_var, command=self._apply_accessibility)
+        contrast.grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 2))
+        ttk.Label(panel, text="Uses a black background, white text, and a bright focus colour for maximum contrast.",
+                  style="Subtitle.TLabel", wraplength=520).grid(row=7, column=0, columnspan=2, sticky="w")
+        ttk.Label(panel, text="Keyboard use", style="Title.TLabel").grid(row=8, column=0, columnspan=2, sticky="w", pady=(22, 0))
+        ttk.Label(panel, text="Use Tab and Shift+Tab to move between controls, Space to toggle checkboxes, and Enter to activate a focused button. Hover any control for a short explanation.",
+                  style="Subtitle.TLabel", wraplength=680, justify="left").grid(row=9, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        theme.bind("<<ComboboxSelected>>", self._apply_accessibility)
+        text_scale.bind("<<ComboboxSelected>>", self._apply_accessibility)
+        ToolTip(theme, "Switch between light and dark appearance.")
+        ToolTip(text_scale, "Change the size of text throughout the application.")
+        ToolTip(contrast, "Increase colour contrast for easier reading.")
+        panel.columnconfigure(1, weight=1)
 
     def _add_dataclass_form(self, parent: ttk.Frame, section: str, cls: type,
                             browse_paths: bool = False, exclude: set[str] | None = None) -> None:
@@ -393,14 +565,20 @@ class OpTurboApp(tk.Tk):
             self.field_vars[(section, item.name)] = variable
             if exclude and item.name in exclude:
                 continue
-            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            label_widget = ttk.Label(parent, text=label)
+            label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
             widget.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
+            help_text = FIELD_HELP.get(item.name, f"Controls {label.lower()}.")
+            ttk.Label(parent, text=help_text, style="Subtitle.TLabel", wraplength=360,
+                      justify="left").grid(row=row + 1, column=1, columnspan=2, sticky="w", padx=5, pady=(0, 5))
+            ToolTip(label_widget, help_text)
+            ToolTip(widget, help_text)
             if section == "tools" and item.name == "handoff_dir":
                 widget.configure(state="readonly")
                 ttk.Label(parent, text="Protected", foreground="#a34a2a").grid(row=row, column=2, padx=4)
             elif browse_paths:
                 ttk.Button(parent, text="Browse…", command=lambda var=variable: self._browse_tool(var)).grid(row=row, column=2, padx=4)
-            row += 1
+            row += 2
         parent.columnconfigure(1, weight=1)
 
     def _make_parsec_rows(self) -> None:
@@ -408,14 +586,15 @@ class OpTurboApp(tk.Tk):
             child.destroy()
         self.parsec_rows.clear()
         self.variable_controls.clear()
-        for column, text in ((0, "Use"), (1, "Parameter"), (2, "Minimum"), (3, "Value"), (4, "Maximum")):
+        for column, text in ((0, "Use"), (1, "Parameter"), (2, "Minimum"), (3, "Value"), (4, "Maximum"), (5, "Description")):
             ttk.Label(self.parsec_body, text=text).grid(row=0, column=column, sticky="w", padx=3)
         for row, spec in enumerate(self.config_model.design_variables, start=1):
             enabled = tk.BooleanVar(value=spec.optimize)
             value = tk.StringVar(value=str(spec.value))
             minimum = tk.StringVar(value=str(spec.minimum))
             maximum = tk.StringVar(value=str(spec.maximum))
-            ttk.Checkbutton(self.parsec_body, variable=enabled).grid(row=row, column=0, padx=3, pady=3)
+            use = ttk.Checkbutton(self.parsec_body, variable=enabled)
+            use.grid(row=row, column=0, padx=3, pady=3)
             label = ttk.Label(self.parsec_body, text=spec.label)
             value_entry = ttk.Entry(self.parsec_body, textvariable=value, width=11)
             minimum_entry = ttk.Entry(self.parsec_body, textvariable=minimum, width=11)
@@ -424,6 +603,14 @@ class OpTurboApp(tk.Tk):
             minimum_entry.grid(row=row, column=2, padx=3)
             value_entry.grid(row=row, column=3, padx=3)
             maximum_entry.grid(row=row, column=4, padx=3)
+            hint = f"Select to optimize {spec.label.lower()}; otherwise its current value stays fixed."
+            description = ttk.Label(self.parsec_body, text=hint, style="Subtitle.TLabel", wraplength=250, justify="left")
+            description.grid(row=row, column=5, sticky="w", padx=(8, 3))
+            ToolTip(use, hint)
+            ToolTip(label, hint)
+            ToolTip(value_entry, f"Current design value for {spec.label.lower()}.")
+            ToolTip(minimum_entry, f"Lowest permitted optimization value for {spec.label.lower()}.")
+            ToolTip(maximum_entry, f"Highest permitted optimization value for {spec.label.lower()}.")
             value.trace_add("write", lambda *_args: self.after_idle(self._draw_design))
             self.parsec_rows.append((spec, enabled, value, minimum, maximum))
             self.variable_controls[spec.key] = (label, value_entry, minimum_entry, maximum_entry)
@@ -433,6 +620,7 @@ class OpTurboApp(tk.Tk):
         self.parsec_body.columnconfigure(1, weight=1)
         for column in (0, 2, 3, 4):
             self.parsec_body.columnconfigure(column, weight=0)
+        self.parsec_body.columnconfigure(5, weight=1)
 
     def _set_variable_row_state(self, key: str, enabled: bool) -> None:
         """Gray and lock fixed design-variable rows while keeping their checkbox usable."""
@@ -449,8 +637,12 @@ class OpTurboApp(tk.Tk):
                 variable = self.field_vars[(section, item.name)]
                 variable.set(getattr(settings, item.name))
         self.design_type_var.set(self.config_model.geometry.design_type)
+        self.theme_var.set(self.config_model.accessibility.theme)
+        self.text_scale_var.set(str(self.config_model.accessibility.text_scale))
+        self.high_contrast_var.set(self.config_model.accessibility.high_contrast)
         self.design_variable_sets = {self.config_model.geometry.design_type: self.config_model.design_variables[:]}
         self._make_parsec_rows()
+        self._apply_accessibility()
         self._draw_design()
 
     def _switch_design_type(self, _event: object | None = None) -> None:
@@ -506,7 +698,9 @@ class OpTurboApp(tk.Tk):
             project_name=self.project_name_var.get().strip() or "Untitled optimization",
             save_dir=self.save_dir_var.get(), tools=build("tools", ToolPaths),
             geometry=build("geometry", GeometrySettings), mesh=build("mesh", MeshSettings),
-            cfd=build("cfd", CfdSettings), ga=build("ga", GaSettings), design_variables=variables,
+            cfd=build("cfd", CfdSettings), ga=build("ga", GaSettings),
+            accessibility=AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
+                                                high_contrast=self.high_contrast_var.get()), design_variables=variables,
         )
         geometry_values = {
             item.key.split(".", 1)[1]: item.value
@@ -664,6 +858,23 @@ class OpTurboApp(tk.Tk):
             mapped.extend((offset_x + (x - xmin) * scale, height - offset_y - (y - ymin) * scale))
         return mapped
 
+    def _draw_axes(self, canvas: tk.Canvas, bounds: tuple[float, float, float, float]) -> None:
+        """Draw labelled x/r axes, grid lines, and millimetre tick values."""
+        xmin, xmax, ymin, ymax = bounds
+        colors = self.palette
+        for index in range(6):
+            fraction = index / 5
+            x = xmin + fraction * (xmax - xmin)
+            y = ymin + fraction * (ymax - ymin)
+            x0, y0 = self._map_points(canvas, [(x, ymin)], bounds)
+            x1, y1 = self._map_points(canvas, [(xmin, y)], bounds)
+            canvas.create_line(x0, 35, x0, max(canvas.winfo_height() - 35, 35), fill=colors["grid"])
+            canvas.create_line(35, y1, max(canvas.winfo_width() - 35, 35), y1, fill=colors["grid"])
+            canvas.create_text(x0, max(canvas.winfo_height() - 20, 20), text=f"{x:.0f}", fill=colors["muted"], font=("Segoe UI", 8))
+            canvas.create_text(29, y1, text=f"{y:.0f}", anchor="e", fill=colors["muted"], font=("Segoe UI", 8))
+        canvas.create_text(max(canvas.winfo_width() - 42, 42), max(canvas.winfo_height() - 8, 8), text="x (mm)", fill=colors["text"], font=("Segoe UI", 9, "bold"))
+        canvas.create_text(10, 50, text="r (mm)", anchor="w", fill=colors["text"], font=("Segoe UI", 9, "bold"))
+
     def _duct_points(self, geometry: GeometrySettings, x_values: list[float], upper: list[float], lower: list[float]) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
         import math
         slope = math.tan(math.radians(geometry.duct_angle_deg))
@@ -732,8 +943,9 @@ class OpTurboApp(tk.Tk):
         xmin, xmax = geometry.domain_origin_x, geometry.domain_origin_x + geometry.domain_length
         ymin, ymax = geometry.domain_origin_r, geometry.domain_origin_r + geometry.domain_height
         bounds = (xmin, xmax, ymin, ymax)
+        self._draw_axes(canvas, bounds)
         domain = outer_domain_outline(geometry)
-        canvas.create_polygon(*self._map_points(canvas, domain, bounds), fill="#f7fafc",
+        canvas.create_polygon(*self._map_points(canvas, domain, bounds), fill=self.palette["surface"],
                               outline="#647386", width=2)
         region = resolution_outline(geometry)
         canvas.create_polygon(*self._map_points(canvas, region, bounds), fill="#dcecff",
@@ -756,6 +968,31 @@ class OpTurboApp(tk.Tk):
         canvas.create_text(14, 14, text="Axisymmetric domain preview (x–r, mm)", anchor="nw",
                            font=("Segoe UI", 10, "bold"), fill="#26313e")
 
+    def _draw_context_inset(self, canvas: tk.Canvas, geometry: GeometrySettings,
+                            top: list[tuple[float, float]], bottom: list[tuple[float, float]]) -> None:
+        """Draw an overview inset so the zoomed duct remains connected to the turbine context."""
+        width, height = max(canvas.winfo_width(), 200), max(canvas.winfo_height(), 150)
+        left, upper, right, lower = width - 235, 18, width - 14, 155
+        canvas.create_rectangle(left, upper, right, lower, fill=self.palette["surface"], outline=self.palette["axis"], width=1)
+        bounds = (geometry.domain_origin_x, geometry.domain_origin_x + geometry.domain_length,
+                  geometry.domain_origin_r, geometry.domain_origin_r + geometry.domain_height)
+
+        def map_inset(points: list[tuple[float, float]]) -> list[float]:
+            xmin, xmax, ymin, ymax = bounds
+            scale = min((right - left - 12) / (xmax - xmin), (lower - upper - 24) / (ymax - ymin))
+            offset_x = left + (right - left - scale * (xmax - xmin)) / 2
+            offset_y = upper + 17 + (lower - upper - 20 - scale * (ymax - ymin)) / 2
+            mapped = []
+            for x, y in points:
+                mapped.extend((offset_x + (x - xmin) * scale, lower - 7 - (y - ymin) * scale))
+            return mapped
+
+        canvas.create_polygon(*map_inset(resolution_outline(geometry)), fill="#dcecff", outline="#4684bd")
+        canvas.create_polygon(*map_inset(hub_outline(geometry)), fill="#7d8793", outline="#35404c")
+        canvas.create_polygon(*map_inset(actuator_outline(geometry)), fill="#1a9c68", outline="#08724c")
+        canvas.create_polygon(*map_inset(top + list(reversed(bottom))), fill="#efb1b5", outline="#b52732")
+        canvas.create_text(left + 6, upper + 6, text="Turbine context (x-r, mm)", anchor="nw", fill=self.palette["text"], font=("Segoe UI", 8, "bold"))
+
     def _draw_duct(self, canvas: tk.Canvas, geometry: GeometrySettings, top: list[tuple[float, float]], bottom: list[tuple[float, float]]) -> None:
         canvas.delete("all")
         points = top + bottom
@@ -763,9 +1000,11 @@ class OpTurboApp(tk.Tk):
         ymin, ymax = min(p[1] for p in points), max(p[1] for p in points)
         pad_x, pad_y = max((xmax - xmin) * 0.08, 1), max((ymax - ymin) * 0.25, 1)
         bounds = (xmin - pad_x, xmax + pad_x, ymin - pad_y, ymax + pad_y)
+        self._draw_axes(canvas, bounds)
         polygon = top + list(reversed(bottom))
         canvas.create_polygon(*self._map_points(canvas, polygon, bounds), fill="#dcecff", outline="#245f9e", width=2)
-        canvas.create_text(14, 14, text=f"{geometry.design_type.title()} duct detail", anchor="nw", font=("Segoe UI", 10, "bold"), fill="#26313e")
+        self._draw_context_inset(canvas, geometry, top, bottom)
+        canvas.create_text(42, 14, text=f"{geometry.design_type.title()} duct detail (x-r, mm)", anchor="nw", font=("Segoe UI", 10, "bold"), fill=self.palette["text"])
 
     def _require_saved_project(self) -> bool:
         if not self._save_project():

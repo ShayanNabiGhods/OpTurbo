@@ -113,6 +113,15 @@ class GaSettings:
     random_seed: int = 42
 
 
+@dataclass
+class AccessibilitySettings:
+    """Store visual preferences that make the desktop interface easier to use."""
+
+    theme: str = "light"
+    text_scale: int = 100
+    high_contrast: bool = False
+
+
 def default_parsec_variables() -> list[VariableSpec]:
     """Return the original duct PARSEC values with conservative bounds."""
     rows = (
@@ -178,6 +187,7 @@ class ProjectConfig:
     mesh: MeshSettings = field(default_factory=MeshSettings)
     cfd: CfdSettings = field(default_factory=CfdSettings)
     ga: GaSettings = field(default_factory=GaSettings)
+    accessibility: AccessibilitySettings = field(default_factory=AccessibilitySettings)
     design_variables: list[VariableSpec] = field(default_factory=default_design_variables)
 
     def to_dict(self) -> dict[str, Any]:
@@ -216,6 +226,7 @@ class ProjectConfig:
             mesh=MeshSettings(**data.get("mesh", {})),
             cfd=CfdSettings(**data.get("cfd", {})),
             ga=GaSettings(**data.get("ga", {})),
+            accessibility=AccessibilitySettings(**data.get("accessibility", {})),
             design_variables=variables or defaults,
         )
 

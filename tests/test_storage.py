@@ -36,6 +36,14 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(keys, {item.key for item in default_flanged_variables()})
         self.assertNotIn("upper.crest_height", keys)
 
+    def test_accessibility_preferences_round_trip(self):
+        config = ProjectConfig.from_dict({
+            "accessibility": {"theme": "dark", "text_scale": 125, "high_contrast": True},
+        })
+        self.assertEqual(config.accessibility.theme, "dark")
+        self.assertEqual(config.accessibility.text_scale, 125)
+        self.assertTrue(config.accessibility.high_contrast)
+
 
 if __name__ == "__main__":
     unittest.main()
