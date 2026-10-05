@@ -1001,6 +1001,13 @@ class OpTurboApp(tk.Tk):
         pad_x, pad_y = max((xmax - xmin) * 0.08, 1), max((ymax - ymin) * 0.25, 1)
         bounds = (xmin - pad_x, xmax + pad_x, ymin - pad_y, ymax + pad_y)
         self._draw_axes(canvas, bounds)
+        # Use the duct's transform for the disk too: including the disk in the
+        # fitted bounds would zoom out and hide the clearance we want to inspect.
+        disk = self._map_points(canvas, actuator_outline(geometry), bounds)
+        canvas.create_polygon(*disk, fill="#1a9c68", outline="#08724c", width=2,
+                              tags="detail_actuator")
+        canvas.create_text(42, 36, text="Green: actuator disk | Blue: duct", anchor="nw",
+                           font=("Segoe UI", 9), fill=self.palette["text"])
         polygon = top + list(reversed(bottom))
         canvas.create_polygon(*self._map_points(canvas, polygon, bounds), fill="#dcecff", outline="#245f9e", width=2)
         self._draw_context_inset(canvas, geometry, top, bottom)
