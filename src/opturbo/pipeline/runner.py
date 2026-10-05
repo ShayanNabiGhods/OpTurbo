@@ -26,6 +26,8 @@ class PipelineRunner:
 
     def evaluate(self, config: ProjectConfig, genome: dict[str, float], candidate_dir: Path) -> dict:
         """Evaluate one genome and return Cp, Ct, and saved artifact paths."""
+        if config.cfd.tip_loss_model not in {"prandtl", "bontempo2025"}:
+            raise ValueError("Choose a valid tip-loss correction model.")
         variables = [replace(item, value=genome.get(item.key, item.value)) for item in config.design_variables]
         geometry_overrides = {
             item.key.split(".", 1)[1]: item.value
@@ -201,6 +203,7 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "blades": config.cfd.blades,
             "omega_rad_s": config.cfd.omega_rad_s,
             "pitch_deg": config.cfd.pitch_deg,
+            "tip_loss_model": config.cfd.tip_loss_model,
             "keep_iteration_data": config.cfd.keep_iteration_data,
         }
         settings_path = output / "cfd_settings.json"

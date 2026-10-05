@@ -90,6 +90,7 @@ class CfdSettings:
     blades: int = 3
     omega_rad_s: float = 133.33333333333331
     pitch_deg: float = 0.0
+    tip_loss_model: str = "prandtl"
     stations: int = 36
     max_outer_iterations: int = 15
     fluent_iterations: int = 200

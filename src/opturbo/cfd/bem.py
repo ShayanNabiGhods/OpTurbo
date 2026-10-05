@@ -20,6 +20,32 @@ def _table(alpha, reynolds, table, angle, reynolds_value):
     return q00 * (1 - ta) * (1 - tr) + q01 * ta * (1 - tr) + q10 * (1 - ta) * tr + q11 * ta * tr
 
 
+def loss_factor(flow: Flow, turbine: Turbine, radius: float, phi: float) -> float:
+    """Apply Prandtl tip/root loss or Bontempo & Manna (2025), p. 5, Eq. (6).
+
+    The duct-calibrated F1 multiplies blade loads directly, without a root
+    factor. Its lambda is the rotor tip-speed ratio, not the local ratio.
+    """
+    if turbine.tip_loss_model not in {"prandtl", "bontempo2025"}:
+        raise ValueError("Unknown tip-loss model: " + turbine.tip_loss_model)
+    if not turbine.hub_radius <= radius <= turbine.radius or radius <= 0:
+        raise ValueError("Blade stations must lie between the hub and rotor tip.")
+    sine = math.sin(phi)
+    if not math.isfinite(sine) or sine <= 0:
+        raise ValueError("Tip-loss correction requires a positive inflow-angle sine.")
+    tip = turbine.blades / 2 * (turbine.radius - radius) / (radius * sine)
+    if turbine.tip_loss_model == "bontempo2025":
+        if flow.speed <= 0 or turbine.omega < 0:
+            raise ValueError("Bontempo correction requires positive wind speed and nonnegative rotor speed.")
+        tip_speed_ratio = turbine.omega * turbine.radius / flow.speed
+        g = math.exp(-0.229 * (turbine.blades * tip_speed_ratio - 22.0116)) + 0.4427
+        return 2 / math.pi * math.acos(math.exp(-g * tip))
+    root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
+    tip_loss = 2 / math.pi * math.acos(math.exp(-tip))
+    root_loss = 2 / math.pi * math.acos(math.exp(-root))
+    return max(1e-4, tip_loss * root_loss)
+
+
 def solve(flow, turbine, blade, airfoil, axial, tangential):
     """Calculate induction, angles, airfoil loads, and BEM loads."""
     values = [[] for _ in range(8)]
@@ -28,11 +54,7 @@ def solve(flow, turbine, blade, airfoil, axial, tangential):
         ap = -ut / (turbine.omega * radius)
         phi = math.atan2(1 - a, turbine.omega * radius / flow.speed * (1 + ap))
         sine, cosine = math.sin(phi), math.cos(phi)
-        tip = turbine.blades / 2 * (turbine.radius - radius) / (radius * sine)
-        root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
-        tip_loss = 2 / math.pi * math.acos(math.exp(-tip))
-        root_loss = 2 / math.pi * math.acos(math.exp(-root))
-        loss = max(1e-4, tip_loss * root_loss)
+        loss = loss_factor(flow, turbine, radius, phi)
         angle = math.degrees(phi) - twist + turbine.pitch
         speed = math.sqrt((flow.speed * (1 - a)) ** 2 +
                           (turbine.omega * radius * (1 + ap)) ** 2)

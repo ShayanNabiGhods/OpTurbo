@@ -74,6 +74,18 @@ folder for diagnosis.
 
 ## Genetic algorithm
 
+In **Workflow Settings > CFD / BEM > Tip-loss correction**, choose `prandtl`
+(the default, preserving the original tip-times-root correction) or
+`bontempo2025` (Bontempo and Manna, Energy Conversion and Management 342,
+120024, page 5, Eq. 6). The latter applies
+`F1 = (2/pi) acos(exp(-g B (R-r)/(2 r sin(phi))))` to both blade loads,
+where `g = exp(-0.229 (B lambda - 22.0116)) + 0.4427` and
+`lambda = omega R / U_infinity`. It has no additional root-loss factor.
+This is the paper's empirical duct calibration, not a universal calibration
+for every optimized duct. The choice is saved with projects and candidates;
+CFD results record `tip_loss_model` and `loss_factor`. Older projects default
+to Prandtl. The monitor labels the chosen correction accordingly.
+
 The implementation uses real-valued genes, a baseline individual, random
 initial candidates, tournament selection, arithmetic crossover, Gaussian
 mutation, bounds clamping, and elitism. A fixed random seed makes a run

@@ -80,6 +80,7 @@ LABELS = {
     "blades": "Blade count",
     "omega_rad_s": "Rotor angular speed (rad/s)",
     "pitch_deg": "Blade pitch (deg)",
+    "tip_loss_model": "Tip-loss correction",
     "max_outer_iterations": "Maximum outer iterations",
     "fluent_iterations": "Fluent iterations per outer loop",
     "tolerance": "Cp/Ct convergence tolerance",
@@ -98,6 +99,7 @@ LABELS = {
 
 
 FIELD_HELP = {
+    "tip_loss_model": "prandtl: original tip and root factors. bontempo2025: duct-calibrated F1 from page 5, Eq. (6), without a root factor.",
     "freecad": "Command-line FreeCAD executable used to create candidate STEP geometry.",
     "spaceclaim": "SpaceClaim executable used with the protected recorded import script.",
     "workbench": "ANSYS Workbench executable used to generate the mesh.",
@@ -556,7 +558,11 @@ class OpTurboApp(tk.Tk):
         for item in fields(cls):
             label = LABELS.get(item.name, item.name.replace("_", " ").title())
             default = getattr(cls(), item.name)
-            if isinstance(default, bool):
+            if section == "cfd" and item.name == "tip_loss_model":
+                variable = tk.StringVar()
+                widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
+                                      values=("prandtl", "bontempo2025"))
+            elif isinstance(default, bool):
                 variable: tk.Variable = tk.BooleanVar()
                 widget = ttk.Checkbutton(parent, variable=variable)
             else:
@@ -716,6 +722,8 @@ class OpTurboApp(tk.Tk):
 
     @staticmethod
     def _validate_positive_settings(config: ProjectConfig) -> None:
+        if config.cfd.tip_loss_model not in {"prandtl", "bontempo2025"}:
+            raise ValueError("Choose a valid tip-loss correction model.")
         if config.geometry.design_type not in {"airfoil", "flanged"}:
             raise ValueError("Choose either the airfoil or flanged duct design.")
         if (config.geometry.duct_chord <= 0 or config.geometry.duct_thickness <= 0 or
@@ -1182,8 +1190,9 @@ class OpTurboApp(tk.Tk):
         ct_values = [float(row.get("ct", 0)) for row in self.history if row.get("ct") is not None and str(row.get("ct")) != "nan"]
         self.performance_plot.set_series([("Cp", cp_values), ("Ct", ct_values)])
         bem_series = []
-        for key, label in (("a", "a"), ("a_prime", "a′"), ("prandtl_loss", "Prandtl F")):
-            values = latest.get(key)
+        loss_label = "Bontempo F1" if latest.get("tip_loss_model") == "bontempo2025" else "Prandtl F"
+        for key, label in (("a", "a"), ("a_prime", "a′"), ("loss_factor", loss_label)):
+            values = latest.get(key, latest.get("prandtl_loss") if key == "loss_factor" else None)
             if isinstance(values, list):
                 bem_series.append((label, [float(value) for value in values]))
         self.bem_plot.set_series(bem_series)

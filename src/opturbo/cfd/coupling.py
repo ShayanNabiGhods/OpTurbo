@@ -80,8 +80,11 @@ def run_coupling(config):
             "thrust": value.thrust, "torque": value.torque, "power": value.power,
             "a": result.a, "a_prime": result.ap, "phi_deg": result.phi,
             "alpha_deg": result.alpha, "reynolds": result.reynolds,
-            "prandtl_loss": result.loss, "radius_m": blade.radius,
+            "loss_factor": result.loss, "tip_loss_model": turbine.tip_loss_model,
+            "radius_m": blade.radius,
         }
+        if turbine.tip_loss_model == "prandtl":
+            result_data["prandtl_loss"] = result.loss
         (history / f"bem_results_iter{iteration:02d}.json").write_text(
             json.dumps(result_data, indent=2), encoding="utf-8")
         (work / "latest_result.json").write_text(

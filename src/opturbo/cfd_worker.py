@@ -62,6 +62,9 @@ def main():
         turbine.blades = settings.get("blades", turbine.blades)
         turbine.omega = settings.get("omega_rad_s", turbine.omega)
         turbine.pitch = settings.get("pitch_deg", turbine.pitch)
+        turbine.tip_loss_model = settings.get("tip_loss_model", turbine.tip_loss_model)
+    if config["turbine"].tip_loss_model not in {"prandtl", "bontempo2025"}:
+        raise ValueError("Unknown tip-loss correction model.")
     if args.mesh:
         source = Path(args.mesh)
         target = config["workdir"] / "axisymmetric_mesh.msh"

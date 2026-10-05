@@ -19,6 +19,7 @@ class Turbine:
     blades: int
     omega: float
     pitch: float = 0.0
+    tip_loss_model: str = "prandtl"
 
 
 @dataclass
