@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
+import math
 import json
 from pathlib import Path
 import re
@@ -14,6 +15,16 @@ from typing import Callable
 from ..models import GeometrySettings, ProjectConfig, VariableSpec
 from ..parsec import nested_parameters, validate_lower_profile, validate_profile
 from .process import executable_path, run_streaming, windows_path
+from ..storage import atomic_json
+
+
+@dataclass
+class PreparedCandidate:
+    """Candidate-owned inputs retained after the shared CAD/meshing stages."""
+
+    config: ProjectConfig
+    folder: Path
+    mesh: Path
 
 
 class PipelineRunner:
@@ -26,14 +37,20 @@ class PipelineRunner:
 
     def evaluate(self, config: ProjectConfig, genome: dict[str, float], candidate_dir: Path) -> dict:
         """Evaluate one genome and return Cp, Ct, and saved artifact paths."""
+        return self.finish(self.prepare(config, genome, candidate_dir))
+
+    def prepare(self, config: ProjectConfig, genome: dict[str, float], candidate_dir: Path) -> PreparedCandidate:
+        """Run stages 1–3 serially and copy the mesh out of the shared handoff."""
         if config.cfd.tip_loss_model not in {"prandtl", "bontempo2025"}:
             raise ValueError("Choose a valid tip-loss correction model.")
-        variables = [replace(item, value=genome.get(item.key, item.value)) for item in config.design_variables]
+        variables = [replace(item, value=genome.get(item.key, item.value) if item.optimize else item.value)
+                     for item in config.design_variables]
         geometry_overrides = {
             item.key.split(".", 1)[1]: item.value
             for item in variables if item.key.startswith("geometry.")
         }
         geometry = replace(config.geometry, **geometry_overrides)
+        config = replace(config, geometry=geometry, design_variables=variables)
         parsec = nested_parameters(variables)
         if geometry.design_type == "flanged":
             validate_lower_profile(parsec)
@@ -46,16 +63,24 @@ class PipelineRunner:
         cfd_dir = candidate_dir / "04_cfd"
         for folder in (geometry_dir, cad_dir, mesh_dir, cfd_dir):
             folder.mkdir(exist_ok=True)
-        (candidate_dir / "candidate.json").write_text(json.dumps({
+        atomic_json(candidate_dir / "candidate.json", {
             "design_type": geometry.design_type, "parsec": parsec, "geometry": asdict(geometry),
             "mesh": asdict(config.mesh), "cfd": asdict(config.cfd),
-        }, indent=2), encoding="utf-8")
+            "genome": genome, "configuration": config.to_dict(),
+        })
         assembly = self._geometry(config, geometry, parsec, geometry_dir)
         scdoc = self._spaceclaim(config, assembly, cad_dir)
         mesh = self._mesh(config, scdoc, mesh_dir)
-        result = self._cfd(config, mesh, cfd_dir)
-        result["candidate_dir"] = str(candidate_dir)
-        (candidate_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        atomic_json(candidate_dir / "preparation.json", {"status": "prepared", "mesh": str(mesh)})
+        return PreparedCandidate(config, candidate_dir, mesh)
+
+    def finish(self, prepared: PreparedCandidate) -> dict:
+        """Run stage 4 using only the candidate's own mesh and working folder."""
+        result = self._cfd(prepared.config, prepared.mesh, prepared.folder / "04_cfd")
+        if not math.isfinite(float(result["cp"])) or not math.isfinite(float(result["ct"])):
+            raise ValueError("CFD returned a non-finite Cp or Ct.")
+        result["candidate_dir"] = str(prepared.folder)
+        atomic_json(prepared.folder / "result.json", result)
         return result
 
     def _geometry(self, config: ProjectConfig, geometry: GeometrySettings,
@@ -99,14 +124,30 @@ class PipelineRunner:
         shutil.copy2(source / "mesh_script.py", output / "mesh_script.py")
         mesh_script = (output / "mesh_script.py").read_text(encoding="utf-8")
         replacements = {
-            "DOMAIN_HEIGHT_CM = 67.5": f"DOMAIN_HEIGHT_CM = {config.geometry.domain_height / 10.0}",
+            # Geometry values used for body selection
+            "DOMAIN_HEIGHT_CM = 675.0": f"DOMAIN_HEIGHT_CM = {config.geometry.domain_height / 10.0}",
             "HUB_RADIUS_CM = 4.5": f"HUB_RADIUS_CM = {config.geometry.hub_radius / 10.0}",
-            "DOMAIN_ORIGIN_X_CM = -22.5": f"DOMAIN_ORIGIN_X_CM = {config.geometry.domain_origin_x / 10.0}",
-            "DOMAIN_LENGTH_CM = 90.0": f"DOMAIN_LENGTH_CM = {config.geometry.domain_length / 10.0}",
+            "DOMAIN_ORIGIN_X_CM = -225.0": f"DOMAIN_ORIGIN_X_CM = {config.geometry.domain_origin_x / 10.0}",
+            "DOMAIN_LENGTH_CM = 900.0": f"DOMAIN_LENGTH_CM = {config.geometry.domain_length / 10.0}",
             "DUCT_ORIGIN_X_CM = -7.2": f"DUCT_ORIGIN_X_CM = {config.geometry.duct_origin_x / 10.0}",
             "DUCT_ORIGIN_R_CM = 47.5": f"DUCT_ORIGIN_R_CM = {config.geometry.duct_origin_r / 10.0}",
             "DUCT_CHORD_CM = 20.0": f"DUCT_CHORD_CM = {config.geometry.duct_chord / 10.0}",
             "DUCT_ANGLE_DEG = 0.0": f"DUCT_ANGLE_DEG = {config.geometry.duct_angle_deg}",
+            "RESOLUTION_LENGTH = 270.0": f"RESOLUTION_LENGTH = {config.geometry.resolution_length / 10}",
+            "RESOLUTION_INLET_RADIUS = 90.0": f"RESOLUTION_INLET_RADIUS = {config.geometry.resolution_inlet_radius / 10}",
+            
+            "DUCT_FLANGE_LENGTH = 0": (
+                f"DUCT_FLANGE_LENGTH = {config.geometry.duct_flange_length / 10.0}"
+                if config.geometry.design_type == "flanged"
+                else "DUCT_FLANGE_LENGTH = 0"
+            ),
+            "DUCT_FLANGE_ANGLE_DEG = 0": (
+                f"DUCT_FLANGE_ANGLE_DEG = {config.geometry.duct_flange_angle_deg}"
+                if config.geometry.design_type == "flanged"
+                else "DUCT_FLANGE_ANGLE_DEG = 0"
+            ),
+            
+            # Meshing sizes and properties
             "GLOBAL_SIZE_CM = 5.0": f"GLOBAL_SIZE_CM = {config.mesh.global_size_cm}",
             "CURVATURE_ANGLE_DEG = 6.0": f"CURVATURE_ANGLE_DEG = {config.mesh.curvature_angle_deg}",
             "RESOLUTION_SIZE_CM = 0.5": f"RESOLUTION_SIZE_CM = {config.mesh.resolution_size_cm}",

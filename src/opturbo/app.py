@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from copy import deepcopy
 import json
 from pathlib import Path
 import queue
@@ -26,6 +27,7 @@ from .models import (
 from .optimizer import GeneticAlgorithm
 from .parsec import lower_profile, nested_parameters, profile, validate_lower_profile, validate_profile
 from .pipeline import PipelineRunner
+from .pipeline.overlap import evaluate_generation
 from .preview import actuator_outline, hub_outline, outer_domain_outline, resolution_outline
 from .storage import ProjectStore, atomic_json
 
@@ -95,10 +97,12 @@ LABELS = {
     "mutation_rate": "Mutation probability",
     "mutation_scale": "Mutation scale (fraction of range)",
     "random_seed": "Random seed",
+    "overlap_preparation": "Overlap meshing with Fluent (experimental)",
 }
 
 
 FIELD_HELP = {
+    "overlap_preparation": "Prepare one next candidate through meshing while the current candidate runs Fluent. Same generation only. Stop waits for both active jobs; a prepared mesh is retained. Uses extra RAM and may require concurrent ANSYS licenses.",
     "tip_loss_model": "prandtl: original tip and root factors. bontempo2025: duct-calibrated F1 from page 5, Eq. (6), without a root factor.",
     "freecad": "Command-line FreeCAD executable used to create candidate STEP geometry.",
     "spaceclaim": "SpaceClaim executable used with the protected recorded import script.",
@@ -653,6 +657,9 @@ class OpTurboApp(tk.Tk):
 
     def _switch_design_type(self, _event: object | None = None) -> None:
         """Replace the Design-tab choices with those valid for the selected duct."""
+        if self.worker and self.worker.is_alive():
+            self.design_type_var.set(self.config_model.geometry.design_type)
+            return
         selected = self.design_type_var.get()
         current = self.config_model.geometry.design_type
         if selected == current or selected not in {"airfoil", "flanged"}:
@@ -760,12 +767,18 @@ class OpTurboApp(tk.Tk):
             variable.set(path)
 
     def _choose_project_folder(self) -> None:
+        if self.worker and self.worker.is_alive():
+            messagebox.showwarning("Run active", "Stop the active run before changing the project folder.")
+            return
         selected = filedialog.askdirectory(title="Choose an empty or existing OpTurbo workflow folder")
         if selected:
             self.save_dir_var.set(selected)
             self._save_project()
 
     def _save_project(self) -> bool:
+        if self.worker and self.worker.is_alive():
+            messagebox.showwarning("Run active", "Stop the active run before saving changed settings.")
+            return False
         try:
             model = self._read_model_from_fields()
             if not model.save_dir:
@@ -781,6 +794,9 @@ class OpTurboApp(tk.Tk):
             return False
 
     def _open_project(self) -> None:
+        if self.worker and self.worker.is_alive():
+            messagebox.showwarning("Run active", "Stop the active run before opening another project.")
+            return
         path = filedialog.askopenfilename(title="Open OpTurbo project", filetypes=[("OpTurbo project", "opturbo_project.json"), ("JSON", "*.json")])
         if not path:
             return
@@ -812,6 +828,8 @@ class OpTurboApp(tk.Tk):
             enabled.set(selected)
 
     def _update_preview_from_fields(self) -> None:
+        if self.worker and self.worker.is_alive():
+            return
         try:
             self.config_model = self._read_model_from_fields()
             self._draw_design()
@@ -1077,15 +1095,17 @@ class OpTurboApp(tk.Tk):
     def _ga_worker(self) -> None:
         try:
             assert self.store is not None
-            optimizer = GeneticAlgorithm(self.config_model.design_variables, self.config_model.ga)
+            config = deepcopy(self.config_model)
+            store = self.store
+            optimizer = GeneticAlgorithm(config.design_variables, config.ga)
             runner = self._runner()
 
             def evaluate(genome: dict[str, float], generation: int, index: int):
-                folder = self.store.candidate_dir(generation, index)
+                folder = store.candidate_dir(generation, index)
                 self.events.put(("candidate", {"generation": generation, "candidate": index,
                                                "genome": genome.copy()}))
                 try:
-                    result = runner.evaluate(self.config_model, genome, folder)
+                    result = runner.evaluate(config, genome, folder)
                     return result["cp"], result
                 except Exception as error:
                     failure = {"cp": -1e30, "ct": float("nan"), "status": "failed",
@@ -1094,16 +1114,23 @@ class OpTurboApp(tk.Tk):
                     self.events.put(("log", f"Candidate failed and received a penalty: {error}"))
                     return failure["cp"], failure
 
+            def generation_evaluator(candidates, generation):
+                return evaluate_generation(runner, config, candidates, generation, store.candidate_dir,
+                                           self.stop_requested.is_set,
+                                           lambda event: self.events.put(("candidate", event)))
+
             best = optimizer.run(evaluate, on_result=lambda event: self.events.put(("result", event)),
-                                 should_stop=self.stop_requested.is_set)
-            self.events.put(("done", f"Optimization finished. Best Cp = {best.fitness:.6g}"))
+                                 should_stop=self.stop_requested.is_set,
+                                 evaluate_generation=generation_evaluator if config.ga.overlap_preparation else None)
+            state = "stopped" if self.stop_requested.is_set() else "finished"
+            self.events.put(("done", f"Optimization {state}. Best Cp = {best.fitness:.6g}"))
         except Exception as error:
             self.events.put(("error", str(error)))
 
     def _stop(self) -> None:
         self.stop_requested.set()
         self.status_var.set("Stop requested — waiting for the current candidate")
-        self._append_log("Stop requested. The active candidate will finish so engineering files are not corrupted.")
+        self._append_log("Stop requested. Active CFD and any overlapping preparation will finish safely. No further CFD candidate will start.")
 
     def _poll_events(self) -> None:
         try:

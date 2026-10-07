@@ -112,6 +112,7 @@ class GaSettings:
     mutation_rate: float = 0.20
     mutation_scale: float = 0.10
     random_seed: int = 42
+    overlap_preparation: bool = False
 
 
 @dataclass

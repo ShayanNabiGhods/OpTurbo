@@ -39,7 +39,11 @@ def loss_factor(flow: Flow, turbine: Turbine, radius: float, phi: float) -> floa
             raise ValueError("Bontempo correction requires positive wind speed and nonnegative rotor speed.")
         tip_speed_ratio = turbine.omega * turbine.radius / flow.speed
         g = math.exp(-0.229 * (turbine.blades * tip_speed_ratio - 22.0116)) + 0.4427
-        return 2 / math.pi * math.acos(math.exp(-g * tip))
+        tip_loss = 2 / math.pi * math.acos(math.exp(-g * tip))
+        # Default prandtl root loss
+        root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
+        root_loss = 2 / math.pi * math.acos(math.exp(-root))
+        return max(1e-4, tip_loss * root_loss)
     root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
     tip_loss = 2 / math.pi * math.acos(math.exp(-tip))
     root_loss = 2 / math.pi * math.acos(math.exp(-root))
