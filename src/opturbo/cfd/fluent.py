@@ -53,22 +53,26 @@ def first_iteration_setup(settings: dict) -> list[str]:
     model = settings.get("viscous_model", "k_omega")
     lines = [_require_choice(model, VISCOUS_MODEL_COMMANDS, "viscous model"), ""]
     residuals = ["continuity", "x_velocity", "y_velocity", "swirl"] + list(_model_equations(model))
-    lines.append("/solve/monitors/residual/convergence-criteria")
-    lines.extend(f"{float(settings.get('residual_' + name, 1e-4)):.10g}" for name in residuals)
-    lines += ["", "/solve/set/gradient-scheme"]
+    residual_values = " ".join(
+        f"{float(settings.get('residual_' + name, 1e-4)):.10g}" for name in residuals
+    )
+    lines.append(f"/solve/monitors/residual/convergence-criteria/{residual_values}")
+    lines += [""]
     gradient = settings.get("gradient_scheme", "least_squares_cell_based")
-    lines.extend(_require_choice(gradient, GRADIENT_RESPONSES, "gradient scheme"))
-    lines += ["", "/solve/set/p-v-coupling",
-              str(_require_choice(settings.get("pressure_velocity_coupling", "piso"),
-                                  COUPLING_SCHEME_CODES, "pressure-velocity coupling"))]
-    lines += ["", "/solve/set/discretization-scheme", "pressure",
-              str(_require_choice(settings.get("pressure_scheme", "second_order"),
-                                  PRESSURE_SCHEME_CODES, "pressure scheme"))]
+    gradient_answers = "/".join(_require_choice(gradient, GRADIENT_RESPONSES, "gradient scheme"))
+    lines.append(f"/solve/set/gradient-scheme/{gradient_answers}")
+    coupling = _require_choice(settings.get("pressure_velocity_coupling", "piso"),
+                               COUPLING_SCHEME_CODES, "pressure-velocity coupling")
+    pressure = _require_choice(settings.get("pressure_scheme", "second_order"),
+                               PRESSURE_SCHEME_CODES, "pressure scheme")
+    lines += ["", f"/solve/set/p-v-coupling/{coupling}",
+              f"/solve/set/discretization-scheme/pressure/{pressure}"]
     convection = [("mom", "momentum_scheme"), ("w-swirl", "swirl_scheme")]
     convection.extend((equation, f"{equation}_scheme") for equation in _model_equations(model))
     for tui_name, setting_name in convection:
-        lines += [tui_name, str(_require_choice(settings.get(setting_name, "second_order_upwind"),
-                                                 CONVECTION_SCHEME_CODES, setting_name))]
+        scheme = _require_choice(settings.get(setting_name, "second_order_upwind"),
+                                 CONVECTION_SCHEME_CODES, setting_name)
+        lines.append(f"/solve/set/discretization-scheme/{tui_name}/{scheme}")
     return lines
 
 
