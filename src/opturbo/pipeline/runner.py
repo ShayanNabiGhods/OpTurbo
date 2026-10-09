@@ -246,6 +246,26 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "pitch_deg": config.cfd.pitch_deg,
             "tip_loss_model": config.cfd.tip_loss_model,
             "keep_iteration_data": config.cfd.keep_iteration_data,
+            "fluent_settings": {
+                "viscous_model": config.cfd.viscous_model,
+                "residual_continuity": config.cfd.residual_continuity,
+                "residual_x_velocity": config.cfd.residual_x_velocity,
+                "residual_y_velocity": config.cfd.residual_y_velocity,
+                "residual_swirl": config.cfd.residual_swirl,
+                "residual_k": config.cfd.residual_k,
+                "residual_epsilon": config.cfd.residual_epsilon,
+                "residual_omega": config.cfd.residual_omega,
+                "residual_nut": config.cfd.residual_nut,
+                "gradient_scheme": config.cfd.gradient_scheme,
+                "pressure_scheme": config.cfd.pressure_scheme,
+                "momentum_scheme": config.cfd.momentum_scheme,
+                "swirl_scheme": config.cfd.swirl_scheme,
+                "k_scheme": config.cfd.k_scheme,
+                "epsilon_scheme": config.cfd.epsilon_scheme,
+                "omega_scheme": config.cfd.omega_scheme,
+                "nut_scheme": config.cfd.nut_scheme,
+                "pressure_velocity_coupling": config.cfd.pressure_velocity_coupling,
+            },
         }
         settings_path = output / "cfd_settings.json"
         settings_path.write_text(json.dumps(cfd_settings, indent=2), encoding="utf-8")

@@ -62,7 +62,8 @@ def run_coupling(config):
         journal = work / "run_ad.jou"
         write_journal(journal, blade, iteration == 1, iteration,
                       config.get("mesh_name", "axisymmetric_mesh.msh"),
-                      config.get("fluent_iterations", 200))
+                      config.get("fluent_iterations", 200),
+                      config.get("fluent_settings", {}))
         clear_report_files(work)
         status, output = run(config["fluent"], work, journal,
                              config.get("processors", 4))

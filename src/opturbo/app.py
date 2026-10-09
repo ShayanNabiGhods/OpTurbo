@@ -89,6 +89,24 @@ LABELS = {
     "relaxation": "Source relaxation",
     "processors": "Fluent processor count",
     "keep_iteration_data": "Keep every outer-iteration solution data file",
+    "viscous_model": "Viscous turbulence model",
+    "residual_continuity": "Continuity residual criterion",
+    "residual_x_velocity": "X-velocity residual criterion",
+    "residual_y_velocity": "Y-velocity residual criterion",
+    "residual_swirl": "Swirl residual criterion",
+    "residual_k": "k residual criterion",
+    "residual_epsilon": "Epsilon residual criterion",
+    "residual_omega": "Omega residual criterion",
+    "residual_nut": "Turbulent-viscosity residual criterion",
+    "gradient_scheme": "Gradient scheme",
+    "pressure_scheme": "Pressure discretization",
+    "momentum_scheme": "Momentum discretization",
+    "swirl_scheme": "Swirl discretization",
+    "k_scheme": "k discretization",
+    "epsilon_scheme": "Epsilon discretization",
+    "omega_scheme": "Omega discretization",
+    "nut_scheme": "Turbulent-viscosity discretization",
+    "pressure_velocity_coupling": "Pressure-velocity coupling",
     "population_size": "Population size",
     "generations": "Generations",
     "elite_count": "Elite designs retained",
@@ -150,6 +168,24 @@ FIELD_HELP = {
     "relaxation": "Fraction of each new source-term update applied to Fluent, from 0 to 1.",
     "processors": "Number of Fluent processes to request for each CFD evaluation.",
     "keep_iteration_data": "Keep every intermediate Fluent data file instead of only the final result.",
+    "viscous_model": "The first Fluent outer iteration selects k-omega standard, k-epsilon standard, or Spalart-Allmaras.",
+    "residual_continuity": "Convergence limit for the continuity residual during the first Fluent setup.",
+    "residual_x_velocity": "Convergence limit for the axial-velocity residual during the first Fluent setup.",
+    "residual_y_velocity": "Convergence limit for the radial-velocity residual during the first Fluent setup.",
+    "residual_swirl": "Convergence limit for the swirl-velocity residual during the first Fluent setup.",
+    "residual_k": "Convergence limit used only with k-omega or k-epsilon.",
+    "residual_epsilon": "Convergence limit used only with k-epsilon.",
+    "residual_omega": "Convergence limit used only with k-omega.",
+    "residual_nut": "Convergence limit used only with Spalart-Allmaras.",
+    "gradient_scheme": "Gradient reconstruction method selected during the first Fluent setup.",
+    "pressure_scheme": "Pressure interpolation scheme selected during the first Fluent setup.",
+    "momentum_scheme": "Momentum convection scheme selected during the first Fluent setup.",
+    "swirl_scheme": "Swirl-velocity convection scheme selected during the first Fluent setup.",
+    "k_scheme": "Turbulent kinetic-energy convection scheme used by k-omega or k-epsilon.",
+    "epsilon_scheme": "Dissipation-rate convection scheme used only by k-epsilon.",
+    "omega_scheme": "Specific-dissipation-rate convection scheme used only by k-omega.",
+    "nut_scheme": "Turbulent-viscosity convection scheme used only by Spalart-Allmaras.",
+    "pressure_velocity_coupling": "Pressure-velocity coupling method selected during the first Fluent setup.",
     "population_size": "Number of candidate designs evaluated in each GA generation.",
     "generations": "Number of GA generations to evaluate.",
     "elite_count": "Best candidates copied unchanged into the next generation.",
@@ -158,6 +194,28 @@ FIELD_HELP = {
     "mutation_rate": "Probability that each gene is randomly perturbed in a child.",
     "mutation_scale": "Standard deviation of a mutation as a fraction of that variable's range.",
     "random_seed": "Fixed seed that makes the optimization sequence reproducible.",
+}
+
+
+CFD_CHOICE_VALUES = {
+    "viscous_model": ("k_omega", "k_epsilon", "spalart_allmaras"),
+    "gradient_scheme": ("green_gauss_cell_based", "green_gauss_node_based",
+                        "least_squares_cell_based"),
+    "pressure_scheme": ("second_order", "standard", "presto", "linear",
+                        "body_force_weighted"),
+    "momentum_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                        "third_order_muscl"),
+    "swirl_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                     "third_order_muscl"),
+    "k_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                 "third_order_muscl"),
+    "epsilon_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                       "third_order_muscl"),
+    "omega_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                     "third_order_muscl"),
+    "nut_scheme": ("first_order_upwind", "second_order_upwind", "quick",
+                   "third_order_muscl"),
+    "pressure_velocity_coupling": ("simple", "simplec", "piso", "coupled"),
 }
 
 
@@ -566,6 +624,10 @@ class OpTurboApp(tk.Tk):
                 variable = tk.StringVar()
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=("prandtl", "bontempo2025"))
+            elif section == "cfd" and item.name in CFD_CHOICE_VALUES:
+                variable = tk.StringVar()
+                widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
+                                      values=CFD_CHOICE_VALUES[item.name])
             elif isinstance(default, bool):
                 variable: tk.Variable = tk.BooleanVar()
                 widget = ttk.Checkbutton(parent, variable=variable)
@@ -760,6 +822,22 @@ class OpTurboApp(tk.Tk):
             raise ValueError("Rotor hub radius must be positive and smaller than rotor radius.")
         if not 0 < config.cfd.relaxation <= 1:
             raise ValueError("CFD relaxation must be greater than 0 and no more than 1.")
+        valid_cfd_choices = {
+            name: set(values) for name, values in CFD_CHOICE_VALUES.items()
+        }
+        for name, options in valid_cfd_choices.items():
+            if getattr(config.cfd, name) not in options:
+                raise ValueError(f"Choose a valid value for {LABELS[name].lower()}.")
+        active_residuals = ["residual_continuity", "residual_x_velocity", "residual_y_velocity",
+                            "residual_swirl"]
+        if config.cfd.viscous_model == "k_omega":
+            active_residuals += ["residual_k", "residual_omega"]
+        elif config.cfd.viscous_model == "k_epsilon":
+            active_residuals += ["residual_k", "residual_epsilon"]
+        else:
+            active_residuals.append("residual_nut")
+        if any(getattr(config.cfd, name) <= 0 for name in active_residuals):
+            raise ValueError("Active Fluent residual criteria must be positive.")
 
     def _browse_tool(self, variable: tk.Variable) -> None:
         path = filedialog.askopenfilename(title="Select executable", filetypes=[("Executable", "*.exe"), ("All files", "*.*")])

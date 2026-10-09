@@ -98,6 +98,24 @@ class CfdSettings:
     relaxation: float = 0.3
     processors: int = 4
     keep_iteration_data: bool = True
+    viscous_model: str = "k_omega"
+    residual_continuity: float = 1e-4
+    residual_x_velocity: float = 1e-4
+    residual_y_velocity: float = 1e-4
+    residual_swirl: float = 1e-4
+    residual_k: float = 1e-4
+    residual_epsilon: float = 1e-4
+    residual_omega: float = 1e-4
+    residual_nut: float = 1e-4
+    gradient_scheme: str = "least_squares_cell_based"
+    pressure_scheme: str = "second_order"
+    momentum_scheme: str = "second_order_upwind"
+    swirl_scheme: str = "second_order_upwind"
+    k_scheme: str = "second_order_upwind"
+    epsilon_scheme: str = "second_order_upwind"
+    omega_scheme: str = "second_order_upwind"
+    nut_scheme: str = "second_order_upwind"
+    pressure_velocity_coupling: str = "piso"
 
 
 @dataclass

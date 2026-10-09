@@ -4,7 +4,76 @@ import subprocess
 from pathlib import Path
 
 
-def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.msh", fluent_iterations=200):
+VISCOUS_MODEL_COMMANDS = {
+    "k_omega": "/define/models/viscous/kw-standard/yes",
+    "k_epsilon": "/define/models/viscous/ke-standard/yes",
+    "spalart_allmaras": "/define/models/viscous/spalart-allmaras/yes",
+}
+GRADIENT_RESPONSES = {
+    "green_gauss_cell_based": ("no", "no"),
+    "green_gauss_node_based": ("yes",),
+    "least_squares_cell_based": ("no", "yes"),
+}
+CONVECTION_SCHEME_CODES = {
+    "first_order_upwind": 0,
+    "second_order_upwind": 1,
+    "quick": 4,
+    "third_order_muscl": 6,
+}
+PRESSURE_SCHEME_CODES = {
+    "second_order": 12,
+    "standard": 10,
+    "presto": 14,
+    "linear": 11,
+    "body_force_weighted": 13,
+}
+COUPLING_SCHEME_CODES = {"simple": 20, "simplec": 21, "piso": 22, "coupled": 24}
+
+
+def _require_choice(value: str, choices: dict[str, object], name: str) -> object:
+    """Return a Fluent TUI value or explain which saved setting is invalid."""
+    try:
+        return choices[value]
+    except KeyError as error:
+        raise ValueError(f"Unknown Fluent {name}: {value}") from error
+
+
+def _model_equations(model: str) -> tuple[str, ...]:
+    """Return the residual and discretization equations active for one model."""
+    equations = {
+        "k_omega": ("k", "omega"),
+        "k_epsilon": ("k", "epsilon"),
+        "spalart_allmaras": ("nut",),
+    }
+    return _require_choice(model, equations, "viscous model")
+
+
+def first_iteration_setup(settings: dict) -> list[str]:
+    """Build model and solver commands that are valid only on outer iteration one."""
+    model = settings.get("viscous_model", "k_omega")
+    lines = [_require_choice(model, VISCOUS_MODEL_COMMANDS, "viscous model"), ""]
+    residuals = ["continuity", "x_velocity", "y_velocity", "swirl"] + list(_model_equations(model))
+    lines.append("/solve/monitors/residual/convergence-criteria")
+    lines.extend(f"{float(settings.get('residual_' + name, 1e-4)):.10g}" for name in residuals)
+    lines += ["", "/solve/set/gradient-scheme"]
+    gradient = settings.get("gradient_scheme", "least_squares_cell_based")
+    lines.extend(_require_choice(gradient, GRADIENT_RESPONSES, "gradient scheme"))
+    lines += ["", "/solve/set/p-v-coupling",
+              str(_require_choice(settings.get("pressure_velocity_coupling", "piso"),
+                                  COUPLING_SCHEME_CODES, "pressure-velocity coupling"))]
+    lines += ["", "/solve/set/discretization-scheme", "pressure",
+              str(_require_choice(settings.get("pressure_scheme", "second_order"),
+                                  PRESSURE_SCHEME_CODES, "pressure scheme"))]
+    convection = [("mom", "momentum_scheme"), ("w-swirl", "swirl_scheme")]
+    convection.extend((equation, f"{equation}_scheme") for equation in _model_equations(model))
+    for tui_name, setting_name in convection:
+        lines += [tui_name, str(_require_choice(settings.get(setting_name, "second_order_upwind"),
+                                                 CONVECTION_SCHEME_CODES, setting_name))]
+    return lines
+
+
+def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.msh",
+                  fluent_iterations=200, fluent_settings=None):
     """Write a journal; only iteration one creates radial line surfaces."""
     path = Path(path)
     # Fluent surface IDs can contain gaps or change after a mesh replacement.
@@ -15,6 +84,7 @@ def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.ms
     lines = [f'/file/read-case "{case}"']
     if first:
         lines.append(f'/mesh/replace "{mesh_name}"')
+        lines += [""] + first_iteration_setup(fluent_settings or {})
     if not first:
         lines.append(f'/file/read-data "coupled_solution_{iteration - 1}.dat.h5"')
     if first:

@@ -37,7 +37,10 @@ folder such as `C:\OpTurbo\Projects\baseline-study`.
   angle. Tick only the variables to optimize; unticked variables remain fixed.
   The domain and duct previews update for the selected family and during a run.
 - **Workflow Settings** — geometry, mesh, and CFD/BEM controls combined into one
-  two-column page. SpaceClaim remains protected and is intentionally not editable.
+  two-column page. Its CFD section also selects the first-outer-iteration Fluent
+  turbulence model, residual criteria, gradient reconstruction, discretization,
+  and pressure-velocity coupling. SpaceClaim remains protected and is intentionally
+  not editable.
 - **Optimization** — single-design evaluation, GA controls, progress, and the
   ranked stream of Cp/Ct results.
 - **Monitor** — live pipeline/Fluent output on the left, with Cp/Ct history and
