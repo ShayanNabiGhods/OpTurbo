@@ -146,6 +146,12 @@ class PipelineRunner:
                 if config.geometry.design_type == "flanged"
                 else "DUCT_FLANGE_ANGLE_DEG = 0"
             ),
+            "LOWER_CREST_HEIGHT = -0.11": (
+                "LOWER_CREST_HEIGHT = " + str(next(
+                    item.value for item in config.design_variables
+                    if item.key == "lower.crest_height"
+                ))
+            ),
             
             # Meshing sizes and properties
             "GLOBAL_SIZE_CM = 5.0": f"GLOBAL_SIZE_CM = {config.mesh.global_size_cm}",
