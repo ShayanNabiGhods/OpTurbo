@@ -10,11 +10,12 @@ DUCT_ORIGIN_X_CM = -7.2
 DUCT_ORIGIN_R_CM = 47.5
 DUCT_CHORD_CM = 20.0
 DUCT_ANGLE_DEG = 0.0
-DUCT_FLANGE_LENGTH = 0
-DUCT_FLANGE_ANGLE_DEG = 0
-LOWER_CREST_HEIGHT = -0.11
 RESOLUTION_LENGTH = 270.0
 RESOLUTION_INLET_RADIUS = 90.0
+# Only for flanged case
+DUCT_FLANGE_LENGTH = 0
+DUCT_FLANGE_ANGLE_DEG = 0
+LOWER_TRAILING_EDGE_HEIGHT = 0
 
 # Meshing sizes and properties
 GLOBAL_SIZE_CM = 5.0
@@ -194,6 +195,7 @@ import math
 # Temp lines, it is not scalable!
 clearance_CM = 0.1
 
+
 duct_x_min = DUCT_ORIGIN_X_CM
 duct_x_max = (
     DUCT_ORIGIN_X_CM
@@ -207,6 +209,7 @@ duct_y_max = (
     DUCT_ORIGIN_R_CM
     + DUCT_FLANGE_LENGTH * math.sin(math.radians(DUCT_FLANGE_ANGLE_DEG))
     + DUCT_CHORD_CM * math.sin(math.radians(DUCT_ANGLE_DEG))
+    + LOWER_TRAILING_EDGE_HEIGHT * DUCT_CHORD_CM
     + clearance_CM
 )
 

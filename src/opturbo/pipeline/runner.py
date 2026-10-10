@@ -135,7 +135,7 @@ class PipelineRunner:
             "DUCT_ANGLE_DEG = 0.0": f"DUCT_ANGLE_DEG = {config.geometry.duct_angle_deg}",
             "RESOLUTION_LENGTH = 270.0": f"RESOLUTION_LENGTH = {config.geometry.resolution_length / 10}",
             "RESOLUTION_INLET_RADIUS = 90.0": f"RESOLUTION_INLET_RADIUS = {config.geometry.resolution_inlet_radius / 10}",
-            
+            # Additional geometry values for flanged mode
             "DUCT_FLANGE_LENGTH = 0": (
                 f"DUCT_FLANGE_LENGTH = {config.geometry.duct_flange_length / 10.0}"
                 if config.geometry.design_type == "flanged"
@@ -146,10 +146,10 @@ class PipelineRunner:
                 if config.geometry.design_type == "flanged"
                 else "DUCT_FLANGE_ANGLE_DEG = 0"
             ),
-            "LOWER_CREST_HEIGHT = -0.11": (
-                "LOWER_CREST_HEIGHT = " + str(next(
+            "LOWER_TRAILING_EDGE_HEIGHT = 0": (
+                "LOWER_TRAILING_EDGE_HEIGHT = " + str(next(
                     item.value for item in config.design_variables
-                    if item.key == "lower.crest_height"
+                    if item.key == "lower.trailing_edge_height"
                 ))
             ),
             
