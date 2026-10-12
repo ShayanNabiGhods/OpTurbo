@@ -84,9 +84,13 @@ In **Workflow Settings > CFD / BEM > Tip-loss correction**, choose `prandtl`
 (the default, preserving the original tip-times-root correction) or
 `bontempo2025` (Bontempo and Manna, Energy Conversion and Management 342,
 120024, page 5, Eq. 6). The latter applies
-`F1 = (2/pi) acos(exp(-g B (R-r)/(2 r sin(phi))))` to both blade loads,
+`F1 = (2/pi) acos(exp(-g B (R-r)/(2 r sin(phi))))` as its tip correction,
 where `g = exp(-0.229 (B lambda - 22.0116)) + 0.4427` and
-`lambda = omega R / U_infinity`. It has no additional root-loss factor.
+`lambda = omega R / U_infinity`. The Bontempo tip factor is multiplied by
+the conventional Prandtl root-loss factor, so root loss remains active for
+both blade loads. The GUI exposes the three `g` coefficients (A, B, C); their
+defaults are −0.229, 22.0116, and 0.4427, respectively, and are saved with
+project settings and passed into each CFD/BEM run.
 This is the paper's empirical duct calibration, not a universal calibration
 for every optimized duct. The choice is saved with projects and candidates;
 CFD results record `tip_loss_model` and `loss_factor`. Older projects default
@@ -98,6 +102,11 @@ mutation, bounds clamping, and elitism. A fixed random seed makes a run
 repeatable. Failed geometry/mesh/CFD candidates receive a large negative
 fitness so the rest of the population can continue.
 
+An interrupted or stopped optimization can be continued with **Resume previous
+optimization**. Completed candidate fitnesses are replayed from the saved
+history, and only candidates without a saved result are sent through the
+engineering pipeline again. Resume requires the same saved workflow settings.
+
 Because every CFD evaluation is expensive, begin with a small population and
 one or two generations. Evaluate the current design once before starting a GA
 to verify the complete external-tool installation.
@@ -108,6 +117,7 @@ to verify the complete external-tool installation.
 chosen-project-folder/
 ├── opturbo_project.json          # editable settings; atomically saved
 ├── optimization_history.json     # every completed candidate
+├── optimization_state.json       # latest GA run and its resume status
 ├── best/best_result.json         # current best design and artifact path
 ├── logs/
 ├── exports/

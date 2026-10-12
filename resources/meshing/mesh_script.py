@@ -19,6 +19,9 @@ LOWER_TRAILING_EDGE_HEIGHT = 0
 
 # Meshing sizes and properties
 GLOBAL_SIZE_CM = 5.0
+GROWTH_RATE = 1.1
+CPU_CORES_FOR_PARALLEL_PART_MESHING = 4
+MESH_METHOD = "Quad"
 CURVATURE_ANGLE_DEG = 6.0
 RESOLUTION_SIZE_CM = 0.5
 DUCT_SIZE_CM = 0.3
@@ -85,6 +88,31 @@ def create_edge_selection(name, rules):
     return selection
 
 
+def create_body_worksheet_selection(name, rules):
+    selection = Model.AddNamedSelection()
+    selection.Name = name
+    selection.ScopingMethod = GeometryDefineByType.Worksheet
+
+    criteria = selection.GenerationCriteria
+
+    for action, criterion, operator, value, upper in rules:
+        criteria.Add(None)
+        rule = criteria[criteria.Count - 1]
+        rule.Action = action
+        rule.EntityType = SelectionType.GeoBody
+        rule.Criterion = criterion
+        rule.Operator = operator
+
+        if upper is None:
+            rule.Value = Quantity(value)
+        else:
+            rule.LowerBound = Quantity(value)
+            rule.UpperBound = Quantity(upper)
+
+    selection.Generate()
+    return selection
+
+
 def create_sizing(name, location, size_cm):
     sizing = mesh.AddSizing()
     sizing.Name = name
@@ -103,6 +131,17 @@ outer_domain = create_face_worksheet_selection("outer-fluid-domain", [
         SelectionCriterionType.Size,
         SelectionOperatorType.Largest,
         "0 [cm^2]",
+        None
+    )
+])
+
+# Whole-domain body (the geometry contains one body).
+whole_domain_body = create_body_worksheet_selection("whole-domain-body", [
+    (
+        SelectionActionType.Add,
+        SelectionCriterionType.Size,
+        SelectionOperatorType.Largest,
+        "0 [cm^3]",
         None
     )
 ])
@@ -253,9 +292,23 @@ hub_wall = create_edge_selection("hub-wall", [
 mesh = Model.Mesh
 
 mesh.ElementSize = Quantity(GLOBAL_SIZE_CM, "cm")
+mesh.GrowthRateSF = GROWTH_RATE
+mesh.NumberOfCPUsForParallelPartMeshing = CPU_CORES_FOR_PARALLEL_PART_MESHING
 mesh.CurvatureNormalAngle = Quantity(CURVATURE_ANGLE_DEG, "deg")
 mesh.AutomaticMeshBasedDefeaturing = 1
 mesh.DefeatureTolerance = Quantity(0.01, "cm")
+
+# Apply the selected automatic method to the whole-domain body.
+automatic_method = mesh.AddAutomaticMethod()
+automatic_method.Location = whole_domain_body.Location
+method_types = {
+    "Quad": MethodType.AllQuad,
+    "Tri": MethodType.AllTriAllTet,
+    "MultiZone": MethodType.MultiZone,
+}
+if MESH_METHOD not in method_types:
+    raise ValueError("Unsupported meshing method: {}".format(MESH_METHOD))
+automatic_method.Method = method_types[MESH_METHOD]
 
 # Local controls sized from the corresponding named selections.
 resolution_sizing = create_sizing(

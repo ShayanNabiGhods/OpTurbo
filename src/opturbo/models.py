@@ -70,6 +70,9 @@ class MeshSettings:
     """Important ANSYS Meshing sizes in centimetres."""
 
     global_size_cm: float = 5.0
+    growth_rate: float = 1.1
+    cpu_cores: int = 4
+    method: str = "Quad"
     curvature_angle_deg: float = 6.0
     resolution_size_cm: float = 0.5
     duct_size_cm: float = 0.3
@@ -91,6 +94,9 @@ class CfdSettings:
     omega_rad_s: float = 133.33333333333331
     pitch_deg: float = 0.0
     tip_loss_model: str = "prandtl"
+    bontempo_g_a: float = -0.229
+    bontempo_g_b: float = 22.0116
+    bontempo_g_c: float = 0.4427
     stations: int = 36
     max_outer_iterations: int = 15
     fluent_iterations: int = 200

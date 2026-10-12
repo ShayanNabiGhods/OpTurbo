@@ -21,10 +21,11 @@ def _table(alpha, reynolds, table, angle, reynolds_value):
 
 
 def loss_factor(flow: Flow, turbine: Turbine, radius: float, phi: float) -> float:
-    """Apply Prandtl tip/root loss or Bontempo & Manna (2025), p. 5, Eq. (6).
+    """Return a tip correction multiplied by the Prandtl root-loss factor.
 
-    The duct-calibrated F1 multiplies blade loads directly, without a root
-    factor. Its lambda is the rotor tip-speed ratio, not the local ratio.
+    Bontempo & Manna (2025), p. 5, Eq. (6), supplies only the duct-calibrated
+    tip correction. Its lambda is the rotor tip-speed ratio, not the local
+    ratio; root loss remains the conventional Prandtl factor.
     """
     if turbine.tip_loss_model not in {"prandtl", "bontempo2025"}:
         raise ValueError("Unknown tip-loss model: " + turbine.tip_loss_model)
@@ -33,21 +34,19 @@ def loss_factor(flow: Flow, turbine: Turbine, radius: float, phi: float) -> floa
     sine = math.sin(phi)
     if not math.isfinite(sine) or sine <= 0:
         raise ValueError("Tip-loss correction requires a positive inflow-angle sine.")
-    tip = turbine.blades / 2 * (turbine.radius - radius) / (radius * sine)
+    tip_argument = turbine.blades / 2 * (turbine.radius - radius) / (radius * sine)
+    root_argument = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
     # bontempo2025 tip-loss factor
     if turbine.tip_loss_model == "bontempo2025":
         if flow.speed <= 0 or turbine.omega < 0:
             raise ValueError("Bontempo correction requires positive wind speed and nonnegative rotor speed.")
         tip_speed_ratio = turbine.omega * turbine.radius / flow.speed
-        g = math.exp(-0.229 * (turbine.blades * tip_speed_ratio - 22.0116)) + 0.4427
-        tip_loss = 2 / math.pi * math.acos(math.exp(-g * tip))
-        # Default prandtl factor as root loss
-        root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
-        root_loss = 2 / math.pi * math.acos(math.exp(-root))
-        return max(1e-4, tip_loss * root_loss)
-    root = turbine.blades / 2 * (radius - turbine.hub_radius) / (radius * sine)
-    tip_loss = 2 / math.pi * math.acos(math.exp(-tip))
-    root_loss = 2 / math.pi * math.acos(math.exp(-root))
+        g = math.exp(turbine.bontempo_g_a *
+                     (turbine.blades * tip_speed_ratio - turbine.bontempo_g_b)) + turbine.bontempo_g_c
+        tip_loss = 2 / math.pi * math.acos(math.exp(-g * tip_argument))
+    else:
+        tip_loss = 2 / math.pi * math.acos(math.exp(-tip_argument))
+    root_loss = 2 / math.pi * math.acos(math.exp(-root_argument))
     return max(1e-4, tip_loss * root_loss)
 
 

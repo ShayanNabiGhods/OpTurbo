@@ -26,6 +26,36 @@ class OptimizerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             GeneticAlgorithm([VariableSpec("x.y", "Y", 0, -1, 1, False)], GaSettings())
 
+    def test_resume_replays_completed_candidates_and_evaluates_only_the_rest(self):
+        variables = [VariableSpec("upper.test", "Test", 0.0, -1.0, 1.0, True)]
+        settings = GaSettings(population_size=4, generations=3, elite_count=1,
+                              mutation_rate=0.5, random_seed=13)
+
+        def objective(genome, generation, index):
+            fitness = -(genome["upper.test"] - 0.25) ** 2
+            return fitness, {"cp": fitness, "ct": 0.0}
+
+        original_events = []
+        original = GeneticAlgorithm(variables, settings).run(
+            objective, on_result=original_events.append)
+        saved = {
+            (event["generation"], event["candidate"]): event
+            for event in original_events[:5]
+        }
+        resumed_calls = []
+        replay_events = []
+        resumed = GeneticAlgorithm(variables, settings).run(
+            lambda genome, generation, index: (
+                resumed_calls.append((generation, index)) or objective(genome, generation, index)
+            ),
+            on_result=replay_events.append,
+            resume_results=saved,
+        )
+
+        self.assertEqual(len(resumed_calls), len(original_events) - len(saved))
+        self.assertEqual(resumed.fitness, original.fitness)
+        self.assertEqual(resumed.genome, original.genome)
+
 
 if __name__ == "__main__":
     unittest.main()

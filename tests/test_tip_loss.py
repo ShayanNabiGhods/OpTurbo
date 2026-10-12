@@ -22,15 +22,21 @@ class TipLossTests(unittest.TestCase):
         expected = max(1e-4, factor(0.45 - r) * factor(r - 0.045))
         self.assertAlmostEqual(loss_factor(self.flow, self.turbine, r, phi), expected)
 
-    def test_bontempo_matches_equation_and_global_tip_speed_ratio(self):
+    def test_bontempo_tip_factor_uses_global_tip_speed_ratio_and_prandtl_root(self):
         turbine = replace(self.turbine, tip_loss_model="bontempo2025")
         for r in (0.045, 0.3, 0.449, 0.45):
             with self.subTest(radius=r):
-                g = math.exp(-0.229 * (3 * 6 - 22.0116)) + 0.4427
-                expected = 2 / math.pi * math.acos(math.exp(-g * 3 * (0.45-r) / (2*r*math.sin(0.25))))
+                g = math.exp(turbine.bontempo_g_a *
+                             (3 * 6 - turbine.bontempo_g_b)) + turbine.bontempo_g_c
+                bontempo_tip = 2 / math.pi * math.acos(math.exp(-g * 3 * (0.45-r) / (2*r*math.sin(0.25))))
+                prandtl_root = 2 / math.pi * math.acos(math.exp(-3 * (r-0.045) / (2*r*math.sin(0.25))))
+                expected = max(1e-4, bontempo_tip * prandtl_root)
                 self.assertAlmostEqual(loss_factor(self.flow, turbine, r, 0.25), expected)
-        self.assertGreater(loss_factor(self.flow, turbine, turbine.hub_radius, 0.25), 0.9)
-        self.assertEqual(loss_factor(self.flow, turbine, turbine.radius, 0.25), 0)
+        custom = replace(turbine, bontempo_g_a=-0.3, bontempo_g_b=20.0, bontempo_g_c=0.5)
+        self.assertNotAlmostEqual(loss_factor(self.flow, turbine, 0.3, 0.25),
+                                  loss_factor(self.flow, custom, 0.3, 0.25))
+        self.assertEqual(loss_factor(self.flow, turbine, turbine.hub_radius, 0.25), 1e-4)
+        self.assertEqual(loss_factor(self.flow, turbine, turbine.radius, 0.25), 1e-4)
 
     def test_model_changes_both_blade_loads(self):
         blade = Blade([0.4], [0.04], [5.0], [0.01], 0.005)
@@ -46,7 +52,13 @@ class TipLossTests(unittest.TestCase):
         self.assertEqual(ProjectConfig.from_dict({}).cfd.tip_loss_model, "prandtl")
         config = ProjectConfig()
         config.cfd.tip_loss_model = "bontempo2025"
-        self.assertEqual(ProjectConfig.from_dict(config.to_dict()).cfd.tip_loss_model, "bontempo2025")
+        config.cfd.bontempo_g_a = -0.3
+        config.cfd.bontempo_g_b = 20.0
+        config.cfd.bontempo_g_c = 0.5
+        restored = ProjectConfig.from_dict(config.to_dict()).cfd
+        self.assertEqual(restored.tip_loss_model, "bontempo2025")
+        self.assertEqual((restored.bontempo_g_a, restored.bontempo_g_b, restored.bontempo_g_c),
+                         (-0.3, 20.0, 0.5))
 
     def test_unknown_model_rejected(self):
         with self.assertRaises(ValueError):

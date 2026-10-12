@@ -63,6 +63,9 @@ def main():
         turbine.omega = settings.get("omega_rad_s", turbine.omega)
         turbine.pitch = settings.get("pitch_deg", turbine.pitch)
         turbine.tip_loss_model = settings.get("tip_loss_model", turbine.tip_loss_model)
+        turbine.bontempo_g_a = settings.get("bontempo_g_a", turbine.bontempo_g_a)
+        turbine.bontempo_g_b = settings.get("bontempo_g_b", turbine.bontempo_g_b)
+        turbine.bontempo_g_c = settings.get("bontempo_g_c", turbine.bontempo_g_c)
     if config["turbine"].tip_loss_model not in {"prandtl", "bontempo2025"}:
         raise ValueError("Unknown tip-loss correction model.")
     if args.mesh:

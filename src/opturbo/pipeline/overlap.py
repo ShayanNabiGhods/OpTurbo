@@ -20,9 +20,11 @@ def evaluate_generation(
 ) -> Iterator[tuple[int, float, dict]]:
     """Yield ordered fitness results; never prepare more than one candidate ahead.
 
-    The calling thread owns all three shared preparation stages. One worker
-    owns Fluent. Leaving the generator waits for active work, retaining an
-    already prepared candidate on Stop without starting its CFD evaluation.
+    One worker owns Fluent and one owns the next candidate's preparation.
+    Fluent results are yielded as soon as they finish, without waiting for the
+    following mesh. The next Fluent job is submitted only after its preparation
+    future has completed. Leaving the generator waits for active work and never
+    starts an unprepared candidate's CFD evaluation.
     Only unevaluated members of this generation are supplied (elites excluded).
     """
     def failure(folder: Path, error: Exception) -> dict:
@@ -57,7 +59,7 @@ def evaluate_generation(
     if not candidates or should_stop():
         return
     current = prepare(candidates[0])
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="opturbo-cfd") as executor:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="opturbo-overlap") as executor:
         for position, (index, genome) in enumerate(candidates):
             if should_stop():
                 return
@@ -67,9 +69,11 @@ def evaluate_generation(
             # Only n+1 is prepared while n runs. No future generation is known here.
             following = None
             if position + 1 < len(candidates) and not should_stop():
-                following = prepare(candidates[position + 1])
+                following = executor.submit(prepare, candidates[position + 1])
             result = future.result() if future is not None else prepared
             yield index, float(result["cp"]), result
             if following is None:
                 return
-            current = following
+            # Do not submit candidate n+1 to Fluent until its full preparation
+            # (including ANSYS mesh generation) has returned successfully.
+            current = following.result()

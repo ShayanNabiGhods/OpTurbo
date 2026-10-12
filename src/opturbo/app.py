@@ -14,6 +14,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable
+import uuid
 
 from .models import (
     AccessibilitySettings,
@@ -69,6 +70,9 @@ LABELS = {
     "duct_reverse": "Reverse duct profile",
     "duct_points": "Duct spline points",
     "global_size_cm": "Global element size (cm)",
+    "growth_rate": "Growth rate",
+    "cpu_cores": "CPU cores for parallel part meshing",
+    "method": "Meshing method",
     "curvature_angle_deg": "Curvature angle (deg)",
     "resolution_size_cm": "Resolution-region size (cm)",
     "duct_size_cm": "Duct-wall size (cm)",
@@ -85,6 +89,9 @@ LABELS = {
     "omega_rad_s": "Rotor angular speed (rad/s)",
     "pitch_deg": "Blade pitch (deg)",
     "tip_loss_model": "Tip-loss correction",
+    "bontempo_g_a": "Bontempo g coefficient A",
+    "bontempo_g_b": "Bontempo g coefficient B",
+    "bontempo_g_c": "Bontempo g coefficient C",
     "max_outer_iterations": "Maximum outer iterations",
     "fluent_iterations": "Fluent iterations per outer loop",
     "tolerance": "Cp/Ct convergence tolerance",
@@ -122,7 +129,10 @@ LABELS = {
 
 FIELD_HELP = {
     "overlap_preparation": "Prepare one next candidate through meshing while the current candidate runs Fluent. Same generation only. Stop waits for both active jobs; a prepared mesh is retained. Uses extra RAM and may require concurrent ANSYS licenses.",
-    "tip_loss_model": "prandtl: original tip and root factors. bontempo2025: duct-calibrated F1 from page 5, Eq. (6), without a root factor.",
+    "tip_loss_model": "prandtl: original tip and root factors. bontempo2025: duct-calibrated tip factor from page 5, Eq. (6), multiplied by the Prandtl root-loss factor.",
+    "bontempo_g_a": "A in g = exp(A × (blade count × tip-speed ratio − B)) + C. Default: −0.229.",
+    "bontempo_g_b": "Coefficient B in g = exp(A × (blade count × tip-speed ratio − B)) + C. Default: 22.0116.",
+    "bontempo_g_c": "C in g = exp(A × (blade count × tip-speed ratio − B)) + C. Default: 0.4427.",
     "freecad": "Command-line FreeCAD executable used to create candidate STEP geometry.",
     "spaceclaim": "SpaceClaim executable used with the protected recorded import script.",
     "workbench": "ANSYS Workbench executable used to generate the mesh.",
@@ -148,6 +158,9 @@ FIELD_HELP = {
     "duct_reverse": "Mirrors the PARSEC surface about its reference line before geometry is created.",
     "duct_points": "Number of spline samples used to construct the duct; higher values make a smoother curve.",
     "global_size_cm": "Default mesh element size away from locally refined regions, in centimetres.",
+    "growth_rate": "Controls the rate at which element sizes grow away from refined regions.",
+    "cpu_cores": "Number of CPU cores ANSYS Meshing uses for parallel part meshing.",
+    "method": "Element method applied to the whole-domain body.",
     "curvature_angle_deg": "Curvature angle used by the mesher to refine curved geometry.",
     "resolution_size_cm": "Target mesh size inside the resolution region, in centimetres.",
     "duct_size_cm": "Target mesh size along the duct wall, in centimetres.",
@@ -371,6 +384,7 @@ class OpTurboApp(tk.Tk):
         self.outer_series: dict[str, list[float]] = {}
         self.worker: threading.Thread | None = None
         self.history: list[dict] = []
+        self.history_lock = threading.Lock()
         self.best_cp = float("-inf")
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
@@ -381,6 +395,7 @@ class OpTurboApp(tk.Tk):
         self._build_menu()
         self._build_layout()
         self._load_model_into_fields()
+        self._update_resume_button()
         self.after(100, self._poll_events)
 
     @staticmethod
@@ -607,6 +622,9 @@ class OpTurboApp(tk.Tk):
         self.single_button.pack(fill="x", pady=3)
         self.start_button = ttk.Button(actions, text="Start GA optimization", style="Accent.TButton", command=self._run_ga)
         self.start_button.pack(fill="x", pady=3)
+        self.resume_button = ttk.Button(actions, text="Resume previous optimization", command=self._resume_ga,
+                                        state="disabled")
+        self.resume_button.pack(fill="x", pady=3)
         self.stop_button = ttk.Button(actions, text="Stop after current candidate", command=self._stop, state="disabled")
         self.stop_button.pack(fill="x", pady=3)
         self.terminate_button = ttk.Button(actions, text="Terminate whole process", command=self._terminate, state="disabled")
@@ -724,6 +742,10 @@ class OpTurboApp(tk.Tk):
                 variable = tk.StringVar()
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=CFD_CHOICE_VALUES[item.name])
+            elif section == "mesh" and item.name == "method":
+                variable = tk.StringVar()
+                widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
+                                      values=("Quad", "Tri", "MultiZone"))
             elif isinstance(default, bool):
                 variable: tk.Variable = tk.BooleanVar()
                 widget = ttk.Checkbutton(parent, variable=variable)
@@ -891,6 +913,9 @@ class OpTurboApp(tk.Tk):
     def _validate_positive_settings(config: ProjectConfig) -> None:
         if config.cfd.tip_loss_model not in {"prandtl", "bontempo2025"}:
             raise ValueError("Choose a valid tip-loss correction model.")
+        if not all(math.isfinite(value) for value in (
+                config.cfd.bontempo_g_a, config.cfd.bontempo_g_b, config.cfd.bontempo_g_c)):
+            raise ValueError("Bontempo g coefficients must be finite numbers.")
         if config.geometry.design_type not in {"airfoil", "flanged"}:
             raise ValueError("Choose either the airfoil or flanged duct design.")
         if (config.geometry.duct_chord <= 0 or config.geometry.duct_thickness <= 0 or
@@ -900,6 +925,7 @@ class OpTurboApp(tk.Tk):
             raise ValueError("Flange length must be positive.")
         mesh_sizes = (
             config.mesh.global_size_cm,
+            config.mesh.growth_rate,
             config.mesh.resolution_size_cm,
             config.mesh.duct_size_cm,
             config.mesh.hub_size_cm,
@@ -909,6 +935,10 @@ class OpTurboApp(tk.Tk):
             raise ValueError("All mesh sizes and inflation thickness must be positive.")
         if config.mesh.curvature_angle_deg <= 0:
             raise ValueError("Mesh curvature angle must be positive.")
+        if config.mesh.cpu_cores < 1:
+            raise ValueError("CPU cores for parallel part meshing must be at least one.")
+        if config.mesh.method not in {"Quad", "Tri", "MultiZone"}:
+            raise ValueError("Choose Quad, Tri, or MultiZone as the meshing method.")
         if config.mesh.inflation_layers < 1:
             raise ValueError("Inflation must contain at least one layer.")
         if config.cfd.stations < 2 or config.cfd.max_outer_iterations < 1:
@@ -963,6 +993,7 @@ class OpTurboApp(tk.Tk):
             self.config_model = model
             self.store = ProjectStore(Path(model.save_dir))
             self.store.initialize(model)
+            self._update_resume_button()
             self.status_var.set(f"Saved — {model.save_dir}")
             return True
         except Exception as error:
@@ -983,6 +1014,7 @@ class OpTurboApp(tk.Tk):
             self.history = json.loads(history_file.read_text(encoding="utf-8")).get("evaluations", []) if history_file.exists() else []
             self._load_model_into_fields()
             self._refresh_results()
+            self._update_resume_button()
             self.status_var.set(f"Opened — {self.config_model.save_dir}")
         except Exception as error:
             messagebox.showerror("Cannot open project", str(error))
@@ -995,6 +1027,7 @@ class OpTurboApp(tk.Tk):
         self.store = None
         self.history.clear()
         self.best_cp = float("-inf")
+        self._update_resume_button()
         self._load_model_into_fields()
         self._refresh_results()
         self.status_var.set("New unsaved project")
@@ -1223,8 +1256,22 @@ class OpTurboApp(tk.Tk):
     def _set_running(self, running: bool) -> None:
         self.single_button.configure(state="disabled" if running else "normal")
         self.start_button.configure(state="disabled" if running else "normal")
+        self._update_resume_button(running)
         self.stop_button.configure(state="normal" if running else "disabled")
         self.terminate_button.configure(state="normal" if running else "disabled")
+
+    def _update_resume_button(self, running: bool = False) -> None:
+        """Enable resume when the selected project has an unfinished GA run."""
+        if not hasattr(self, "resume_button"):
+            return
+        resumable = False
+        if self.store is not None:
+            try:
+                state = self.store.load_optimization_state()
+                resumable = bool(state and state.get("status") != "completed")
+            except (OSError, ValueError, TypeError):
+                resumable = False
+        self.resume_button.configure(state="normal" if resumable and not running else "disabled")
 
     def _run_single(self) -> None:
         if not self._require_saved_project():
@@ -1232,16 +1279,59 @@ class OpTurboApp(tk.Tk):
         self._start_worker(self._single_worker, "Evaluating current design")
 
     def _run_ga(self) -> None:
-        if not self._require_saved_project():
+        self._start_ga(resume=False)
+
+    def _resume_ga(self) -> None:
+        self._start_ga(resume=True)
+
+    def _start_ga(self, resume: bool) -> None:
+        if resume:
+            if self.store is None:
+                messagebox.showerror("No project selected", "Open the project that contains the optimization to resume.")
+                return
+            try:
+                requested_config = self._read_model_from_fields()
+                state = self.store.load_optimization_state()
+            except Exception as error:
+                messagebox.showerror("Cannot resume optimization", str(error))
+                return
+            if not state or state.get("status") == "completed":
+                messagebox.showerror("No resumable optimization", "This project has no unfinished optimization to resume.")
+                self._update_resume_button()
+                return
+            if state.get("configuration") != requested_config.to_dict():
+                messagebox.showerror(
+                    "Settings changed",
+                    "The project settings differ from the saved optimization. Restore the original settings before resuming.",
+                )
+                return
+            if not self._save_project():
+                return
+        elif not self._require_saved_project():
             return
         if not any(item.optimize for item in self.config_model.design_variables):
             messagebox.showerror("No variables selected", "Tick at least one variable in the Design tab.")
             return
+        assert self.store is not None
+        state = self.store.load_optimization_state()
+        if resume:
+            assert state is not None
+        elif state and state.get("status") != "completed":
+            if not messagebox.askyesno(
+                "Start a new optimization?",
+                "This project has an unfinished optimization. Starting a new run will replace its resume point. Continue?",
+            ):
+                return
         total = (self.config_model.ga.population_size +
                  (self.config_model.ga.generations - 1) *
                  (self.config_model.ga.population_size - self.config_model.ga.elite_count))
-        self.progress.configure(maximum=total, value=0)
-        self._start_worker(self._ga_worker, "Optimization running")
+        completed = 0
+        if resume and state:
+            run_id = state.get("run_id")
+            completed = sum(1 for row in self.history if row.get("optimization_id") == run_id)
+        self.progress.configure(maximum=total, value=completed)
+        self._start_worker(lambda: self._ga_worker(resume=resume),
+                           "Resuming optimization" if resume else "Optimization running")
 
     def _start_worker(self, target: Callable[[], None], status: str) -> None:
         if self.worker and self.worker.is_alive():
@@ -1270,11 +1360,37 @@ class OpTurboApp(tk.Tk):
         except Exception as error:
             self.events.put(("error", str(error)))
 
-    def _ga_worker(self) -> None:
+    def _ga_worker(self, resume: bool = False) -> None:
+        state: dict | None = None
+        store: ProjectStore | None = None
         try:
             assert self.store is not None
             config = deepcopy(self.config_model)
             store = self.store
+            if resume:
+                state = store.load_optimization_state()
+                if not state or state.get("status") == "completed":
+                    raise RuntimeError("This project has no unfinished optimization to resume.")
+                if state.get("configuration") != config.to_dict():
+                    raise RuntimeError("Project settings changed since this optimization was started.")
+                run_id = str(state["run_id"])
+            else:
+                run_id = uuid.uuid4().hex
+                state = {
+                    "run_id": run_id,
+                    "status": "running",
+                    "configuration": config.to_dict(),
+                }
+                store.save_optimization_state(state)
+
+            with self.history_lock:
+                resume_results = {
+                    (int(row["generation"]), int(row["candidate"])): row
+                    for row in self.history
+                    if row.get("optimization_id") == run_id
+                    and int(row.get("generation", 0)) >= 1
+                    and "candidate" in row
+                }
             optimizer = GeneticAlgorithm(config.design_variables, config.ga)
             runner = self._runner()
 
@@ -1297,12 +1413,36 @@ class OpTurboApp(tk.Tk):
                                            self.stop_requested.is_set,
                                            lambda event: self.events.put(("candidate", event)))
 
-            best = optimizer.run(evaluate, on_result=lambda event: self.events.put(("result", event)),
+            def on_result(event: dict) -> None:
+                key = (int(event["generation"]), int(event["candidate"]))
+                if key in resume_results:
+                    return
+                saved_event = {**event, "optimization_id": run_id}
+                with self.history_lock:
+                    self.history.append(saved_event)
+                    store.save_history(self.history)
+                    resume_results[key] = saved_event
+                self.events.put(("result", saved_event))
+
+            best = optimizer.run(evaluate, on_result=on_result,
                                  should_stop=self.stop_requested.is_set,
-                                 evaluate_generation=generation_evaluator if config.ga.overlap_preparation else None)
-            state = "stopped" if self.stop_requested.is_set() else "finished"
-            self.events.put(("done", f"Optimization {state}. Best Cp = {best.fitness:.6g}"))
+                                 evaluate_generation=generation_evaluator if config.ga.overlap_preparation else None,
+                                 resume_results=resume_results)
+            run_status = "stopped" if self.stop_requested.is_set() else "finished"
+            state_data = store.load_optimization_state() or {}
+            state_data.update({
+                "run_id": run_id,
+                "status": "stopped" if self.stop_requested.is_set() else "completed",
+                "configuration": config.to_dict(),
+                "completed_candidates": len(resume_results),
+            })
+            store.save_optimization_state(state_data)
+            self.events.put(("done", f"Optimization {run_status}. Best Cp = {best.fitness:.6g}"))
         except Exception as error:
+            if store is not None and state is not None:
+                state["status"] = "interrupted"
+                state["last_error"] = str(error)
+                store.save_optimization_state(state)
             self.events.put(("error", str(error)))
 
     def _stop(self) -> None:
@@ -1375,15 +1515,28 @@ class OpTurboApp(tk.Tk):
         self.log_text.configure(state="disabled")
 
     def _record_result(self, event: dict) -> None:
-        self.history.append(event)
-        if self.store:
-            self.store.save_history(self.history)
+        with self.history_lock:
+            optimization_id = event.get("optimization_id")
+            already_saved = optimization_id and any(
+                row.get("optimization_id") == optimization_id
+                and row.get("generation") == event.get("generation")
+                and row.get("candidate") == event.get("candidate")
+                for row in self.history
+            )
+            if not already_saved:
+                self.history.append(event)
+            if self.store:
+                self.store.save_history(self.history)
         cp = float(event.get("cp", event.get("fitness", float("nan"))))
         ct = float(event.get("ct", float("nan")))
         status = event.get("status", "completed")
         self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
                                  event.get("candidate"), f"{cp:.7g}", f"{ct:.7g}", status))
-        self.progress.configure(value=len(self.history))
+        with self.history_lock:
+            progress_value = (sum(1 for row in self.history
+                                  if row.get("optimization_id") == event.get("optimization_id"))
+                              if event.get("optimization_id") else len(self.history))
+        self.progress.configure(value=progress_value)
         if cp > self.best_cp:
             self.best_cp = cp
             self.best_var.set(f"Best Cp: {cp:.7g}    Ct: {ct:.7g}")
@@ -1427,7 +1580,7 @@ class OpTurboApp(tk.Tk):
         ct_values = [float(row.get("ct", 0)) for row in self.history if row.get("ct") is not None and str(row.get("ct")) != "nan"]
         self.performance_plot.set_series([("Cp", cp_values), ("Ct", ct_values)])
         bem_series = []
-        loss_label = "Bontempo F1" if latest.get("tip_loss_model") == "bontempo2025" else "Prandtl F"
+        loss_label = "Bontempo tip × Prandtl root" if latest.get("tip_loss_model") == "bontempo2025" else "Prandtl tip × root"
         for key, label in (("a", "a"), ("a_prime", "a′"), ("loss_factor", loss_label)):
             values = latest.get(key, latest.get("prandtl_loss") if key == "loss_factor" else None)
             if isinstance(values, list):

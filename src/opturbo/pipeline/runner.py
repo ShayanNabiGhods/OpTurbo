@@ -157,6 +157,11 @@ class PipelineRunner:
             
             # Meshing sizes and properties
             "GLOBAL_SIZE_CM = 5.0": f"GLOBAL_SIZE_CM = {config.mesh.global_size_cm}",
+            "GROWTH_RATE = 1.1": f"GROWTH_RATE = {config.mesh.growth_rate}",
+            "CPU_CORES_FOR_PARALLEL_PART_MESHING = 4": (
+                f"CPU_CORES_FOR_PARALLEL_PART_MESHING = {config.mesh.cpu_cores}"
+            ),
+            'MESH_METHOD = "Quad"': f'MESH_METHOD = {config.mesh.method!r}',
             "CURVATURE_ANGLE_DEG = 6.0": f"CURVATURE_ANGLE_DEG = {config.mesh.curvature_angle_deg}",
             "RESOLUTION_SIZE_CM = 0.5": f"RESOLUTION_SIZE_CM = {config.mesh.resolution_size_cm}",
             "DUCT_SIZE_CM = 0.3": f"DUCT_SIZE_CM = {config.mesh.duct_size_cm}",
@@ -253,6 +258,9 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "omega_rad_s": config.cfd.omega_rad_s,
             "pitch_deg": config.cfd.pitch_deg,
             "tip_loss_model": config.cfd.tip_loss_model,
+            "bontempo_g_a": config.cfd.bontempo_g_a,
+            "bontempo_g_b": config.cfd.bontempo_g_b,
+            "bontempo_g_c": config.cfd.bontempo_g_c,
             "keep_iteration_data": config.cfd.keep_iteration_data,
             "fluent_settings": {
                 "viscous_model": config.cfd.viscous_model,

@@ -64,3 +64,18 @@ class ProjectStore:
         """Save optimizer history for restart, plotting, and audit."""
         atomic_json(self.root / "optimization_history.json", {"evaluations": rows})
 
+    @property
+    def optimization_state_path(self) -> Path:
+        """Return the run metadata used to identify a resumable optimization."""
+        return self.root / "optimization_state.json"
+
+    def load_optimization_state(self) -> dict[str, Any] | None:
+        """Load the latest GA run state, if this project has one."""
+        if not self.optimization_state_path.exists():
+            return None
+        return json.loads(self.optimization_state_path.read_text(encoding="utf-8"))
+
+    def save_optimization_state(self, state: dict[str, Any]) -> None:
+        """Atomically save the active/resumable GA run metadata."""
+        atomic_json(self.optimization_state_path, state)
+

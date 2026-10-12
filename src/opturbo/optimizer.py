@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from contextlib import closing
 import math
 import random
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Mapping
 
 from .models import GaSettings, VariableSpec
 
@@ -14,6 +14,7 @@ from .models import GaSettings, VariableSpec
 Genome = dict[str, float]
 Evaluator = Callable[[Genome, int, int], tuple[float, dict]]
 GenerationEvaluator = Callable[[list[tuple[int, Genome]], int], Iterator[tuple[int, float, dict]]]
+ResumeResults = Mapping[tuple[int, int], dict]
 
 
 @dataclass
@@ -82,6 +83,7 @@ class GeneticAlgorithm:
         on_result: Callable[[dict], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
         evaluate_generation: GenerationEvaluator | None = None,
+        resume_results: ResumeResults | None = None,
     ) -> Individual:
         """Run all generations and return the best evaluated individual."""
         population = [Individual(self._baseline_genome())]
@@ -91,8 +93,52 @@ class GeneticAlgorithm:
         for generation in range(1, self.settings.generations + 1):
             pending = [(index, item.genome.copy()) for index, item in enumerate(population, 1)
                        if item.fitness is None]
-            results = (evaluate_generation(pending, generation) if evaluate_generation else
-                       ((index, *evaluate(genome, generation, index)) for index, genome in pending))
+
+            def cached_result(index: int, genome: Genome) -> tuple[float, dict] | None:
+                if resume_results is None:
+                    return None
+                saved = resume_results.get((generation, index))
+                if saved is None:
+                    return None
+                saved_genome = saved.get("genome")
+                if saved_genome != genome:
+                    raise ValueError(
+                        f"Saved candidate {generation}/{index} does not match the regenerated GA genome."
+                    )
+                fitness = float(saved.get("fitness", saved.get("cp", float("nan"))))
+                if not math.isfinite(fitness):
+                    raise ValueError(f"Saved candidate {generation}/{index} has non-finite fitness.")
+                return fitness, saved
+
+            if evaluate_generation:
+                replayed: dict[int, tuple[float, dict]] = {}
+                live: list[tuple[int, Genome]] = []
+                for index, genome in pending:
+                    cached = cached_result(index, genome)
+                    if cached is None:
+                        live.append((index, genome))
+                    else:
+                        replayed[index] = cached
+                live_results = iter(evaluate_generation(live, generation))
+
+                def ordered_generation_results():
+                    for index, _genome in pending:
+                        if index in replayed:
+                            yield index, *replayed[index]
+                        else:
+                            yield next(live_results)
+
+                results = ordered_generation_results()
+            else:
+                def sequential_results():
+                    for index, genome in pending:
+                        cached = cached_result(index, genome)
+                        if cached is None:
+                            yield index, *evaluate(genome, generation, index)
+                        else:
+                            yield index, *cached
+
+                results = sequential_results()
             # Closing a generation waits for its active stages, even on Stop or error.
             with closing(results):
                 for expected_index, _ in pending:

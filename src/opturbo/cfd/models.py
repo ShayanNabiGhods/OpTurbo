@@ -20,6 +20,9 @@ class Turbine:
     omega: float
     pitch: float = 0.0
     tip_loss_model: str = "prandtl"
+    bontempo_g_a: float = -0.229
+    bontempo_g_b: float = 22.0116
+    bontempo_g_c: float = 0.4427
 
 
 @dataclass
