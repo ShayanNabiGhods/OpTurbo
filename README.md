@@ -38,9 +38,12 @@ folder such as `C:\OpTurbo\Projects\baseline-study`.
   The domain and duct previews update for the selected family and during a run.
 - **Workflow Settings** — geometry, mesh, and CFD/BEM controls combined into one
   two-column page. Its CFD section also selects the first-outer-iteration Fluent
-  turbulence model, residual criteria, gradient reconstruction, discretization,
+  turbulence model, residual criteria, discretization,
   and pressure-velocity coupling. SpaceClaim remains protected and is intentionally
   not editable.
+  The turbulence sub-grid shows only the selected model's equations: k/omega
+  for k-omega, k/epsilon for k-epsilon, or turbulent viscosity for
+  Spalart-Allmaras. Hidden model settings are retained when switching models.
 - **Optimization** — single-design evaluation, GA controls, progress, and the
   ranked stream of Cp/Ct results.
 - **Monitor** — live pipeline/Fluent output on the left, with Cp/Ct history and

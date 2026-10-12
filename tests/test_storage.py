@@ -9,6 +9,10 @@ from opturbo.storage import ProjectStore
 
 
 class StorageTests(unittest.TestCase):
+    def test_retired_gradient_setting_is_discarded(self):
+        config = ProjectConfig.from_dict({"cfd": {"gradient_scheme": "green_gauss_node_based"}})
+        self.assertNotIn("gradient_scheme", config.to_dict()["cfd"])
+
     def test_save_load_and_unique_candidate_directories(self):
         with tempfile.TemporaryDirectory() as folder:
             config = ProjectConfig(project_name="Example", save_dir=folder)

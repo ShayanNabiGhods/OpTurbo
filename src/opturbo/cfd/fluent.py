@@ -9,11 +9,6 @@ VISCOUS_MODEL_COMMANDS = {
     "k_epsilon": "/define/models/viscous/ke-standard/yes",
     "spalart_allmaras": "/define/models/viscous/spalart-allmaras/yes",
 }
-GRADIENT_RESPONSES = {
-    "green_gauss_cell_based": ("no", "no"),
-    "green_gauss_node_based": ("yes",),
-    "least_squares_cell_based": ("no", "yes"),
-}
 CONVECTION_SCHEME_CODES = {
     "first_order_upwind": 0,
     "second_order_upwind": 1,
@@ -58,9 +53,6 @@ def first_iteration_setup(settings: dict) -> list[str]:
     )
     lines.append(f"/solve/monitors/residual/convergence-criteria/{residual_values}")
     lines += [""]
-    gradient = settings.get("gradient_scheme", "least_squares_cell_based")
-    gradient_answers = "/".join(_require_choice(gradient, GRADIENT_RESPONSES, "gradient scheme"))
-    lines.append(f"/solve/set/gradient-scheme/{gradient_answers}")
     coupling = _require_choice(settings.get("pressure_velocity_coupling", "piso"),
                                COUPLING_SCHEME_CODES, "pressure-velocity coupling")
     pressure = _require_choice(settings.get("pressure_scheme", "second_order"),

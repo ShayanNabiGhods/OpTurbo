@@ -30,10 +30,12 @@ class PreparedCandidate:
 class PipelineRunner:
     """Run one design through the four isolated engineering adapters."""
 
-    def __init__(self, application_root: Path, emit: Callable[[str], None] = print):
+    def __init__(self, application_root: Path, emit: Callable[[str], None] = print,
+                 cancel: Callable[[], bool] | None = None):
         self.root = Path(application_root)
         self.resources = self.root / "resources"
         self.emit = emit
+        self.cancel = cancel
 
     def evaluate(self, config: ProjectConfig, genome: dict[str, float], candidate_dir: Path) -> dict:
         """Evaluate one genome and return Cp, Ct, and saved artifact paths."""
@@ -92,7 +94,7 @@ class PipelineRunner:
         settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         script = self.root / "src" / "opturbo" / "geometry_worker.py"
         command = [sys.executable, str(script), "--config", str(settings_path), "--out", str(output)]
-        run_streaming(command, self.root, output / "freecad.log", self.emit)
+        run_streaming(command, self.root, output / "freecad.log", self.emit, self.cancel)
         assembly = output / "profile_assembly.step"
         if not assembly.exists():
             raise FileNotFoundError(f"FreeCAD did not create {assembly}")
@@ -111,7 +113,7 @@ class PipelineRunner:
         script = self.resources / "spaceclaim" / "profile_assembly.scscript"
         command = [executable_path(config.tools.spaceclaim), "/Headless=True",
                    f"/RunScript={windows_path(script)}", "/ExitAfterScript=True"]
-        run_streaming(command, self.root, output / "spaceclaim.log", self.emit)
+        run_streaming(command, self.root, output / "spaceclaim.log", self.emit, self.cancel)
         if not fixed_scdoc.exists():
             raise FileNotFoundError("SpaceClaim did not create profile_assembly.scdoc in its fixed handoff folder.")
         destination = output / "profile_assembly.scdoc"
@@ -186,18 +188,18 @@ class PipelineRunner:
         workbench_command = [executable_path(config.tools.workbench), "-B", "-R",
                              windows_path(staged_journal)]
         try:
-            run_streaming(workbench_command, stage, output / "meshing.log", self.emit)
+            run_streaming(workbench_command, stage, output / "meshing.log", self.emit, self.cancel)
         except RuntimeError:
             self.emit("Workbench failed once; clearing its fixed scratch project and retrying.")
             project.unlink(missing_ok=True)
             if project_files.exists():
                 shutil.rmtree(project_files)
             time.sleep(3)
-            run_streaming(workbench_command, stage, output / "meshing.log", self.emit)
+            run_streaming(workbench_command, stage, output / "meshing.log", self.emit, self.cancel)
         extractor = source / "extract_mesh_artifact.py"
         mesh = output / "axisymmetric_mesh.msh"
         run_streaming([sys.executable, str(extractor), "--project", str(project), "--output", str(mesh), "--cleanup"],
-                      output, output / "meshing.log", self.emit)
+                      output, output / "meshing.log", self.emit, self.cancel)
         candidates = list(output.glob("axisymmetric_mesh.msh*"))
         if not candidates:
             raise FileNotFoundError("ANSYS Meshing produced no Fluent mesh artifact.")
@@ -262,7 +264,6 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
                 "residual_epsilon": config.cfd.residual_epsilon,
                 "residual_omega": config.cfd.residual_omega,
                 "residual_nut": config.cfd.residual_nut,
-                "gradient_scheme": config.cfd.gradient_scheme,
                 "pressure_scheme": config.cfd.pressure_scheme,
                 "momentum_scheme": config.cfd.momentum_scheme,
                 "swirl_scheme": config.cfd.swirl_scheme,
@@ -282,7 +283,7 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
                    "--mesh", str(mesh), "--resources", str(tables),
                    "--workdir", str(fluent_workdir)]
         log = output / "fluent_driver.log"
-        run_streaming(command, output, log, self.emit)
+        run_streaming(command, output, log, self.emit, self.cancel)
         latest = fluent_workdir / "latest_result.json"
         if latest.exists():
             return json.loads(latest.read_text(encoding="utf-8"))

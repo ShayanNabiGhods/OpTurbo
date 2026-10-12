@@ -107,7 +107,6 @@ class CfdSettings:
     residual_epsilon: float = 1e-4
     residual_omega: float = 1e-4
     residual_nut: float = 1e-4
-    gradient_scheme: str = "least_squares_cell_based"
     pressure_scheme: str = "second_order"
     momentum_scheme: str = "second_order_upwind"
     swirl_scheme: str = "second_order_upwind"
@@ -140,6 +139,7 @@ class AccessibilitySettings:
     theme: str = "light"
     text_scale: int = 100
     high_contrast: bool = False
+    accent_color: str = "#2f6fed"
 
 
 def default_parsec_variables() -> list[VariableSpec]:
@@ -238,13 +238,16 @@ class ProjectConfig:
                 elif default.key == "geometry.duct_flange_angle_deg" and "duct_flange_angle_deg" in geometry_data:
                     default.value = geometry.duct_flange_angle_deg
                 variables.insert(0 if default.key.startswith("geometry.") else len(variables), default)
+        cfd_data = dict(data.get("cfd", {}))
+        # Older projects may contain this retired setting; never forward it.
+        cfd_data.pop("gradient_scheme", None)
         return cls(
             project_name=data.get("project_name", "Untitled optimization"),
             save_dir=data.get("save_dir", ""),
             tools=ToolPaths(**data.get("tools", {})),
             geometry=geometry,
             mesh=MeshSettings(**data.get("mesh", {})),
-            cfd=CfdSettings(**data.get("cfd", {})),
+            cfd=CfdSettings(**cfd_data),
             ga=GaSettings(**data.get("ga", {})),
             accessibility=AccessibilitySettings(**data.get("accessibility", {})),
             design_variables=variables or defaults,

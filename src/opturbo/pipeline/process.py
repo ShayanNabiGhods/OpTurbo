@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import threading
 from typing import Callable
 
 
@@ -24,9 +25,11 @@ def executable_path(configured: str) -> str:
     return configured
 
 
-def run_streaming(command: list[str], cwd: Path, log_path: Path, emit: Callable[[str], None]) -> None:
+def run_streaming(command: list[str], cwd: Path, log_path: Path, emit: Callable[[str], None], cancel: Callable[[], bool] | None = None) -> None:
     """Run a command, append combined output to a log, and raise on failure."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    if cancel and cancel():
+        raise RuntimeError("Process terminated by user")
     emit("$ " + " ".join(command))
     with log_path.open("a", encoding="utf-8", errors="replace") as log:
         process = subprocess.Popen(
@@ -34,10 +37,32 @@ def run_streaming(command: list[str], cwd: Path, log_path: Path, emit: Callable[
             text=True, encoding="utf-8", errors="replace",
         )
         assert process.stdout is not None
-        for line in process.stdout:
-            clean = line.rstrip()
-            log.write(line)
-            emit(clean)
-        status = process.wait()
+        finished = threading.Event()
+
+        def watch_cancel() -> None:
+            """Stop only this launched process tree, even when stdout is quiet."""
+            while not finished.wait(0.1):
+                if cancel and cancel() and process.poll() is None:
+                    if os.name == "nt":
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                       capture_output=True, check=False)
+                    else:
+                        process.kill()
+                    return
+
+        watcher = threading.Thread(target=watch_cancel, daemon=True)
+        watcher.start()
+        try:
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                emit(line.rstrip())
+            status = process.wait()
+        finally:
+            finished.set()
+            watcher.join()
+            process.stdout.close()
+    if cancel and cancel():
+        raise RuntimeError("Process terminated by user")
     if status:
         raise RuntimeError(f"Command failed with exit code {status}: {command[0]}")

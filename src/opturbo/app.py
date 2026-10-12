@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import fields, replace
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 import queue
+import re
 import shutil
 import threading
 import tkinter as tk
@@ -98,7 +100,6 @@ LABELS = {
     "residual_epsilon": "Epsilon residual criterion",
     "residual_omega": "Omega residual criterion",
     "residual_nut": "Turbulent-viscosity residual criterion",
-    "gradient_scheme": "Gradient scheme",
     "pressure_scheme": "Pressure discretization",
     "momentum_scheme": "Momentum discretization",
     "swirl_scheme": "Swirl discretization",
@@ -177,7 +178,6 @@ FIELD_HELP = {
     "residual_epsilon": "Convergence limit used only with k-epsilon.",
     "residual_omega": "Convergence limit used only with k-omega.",
     "residual_nut": "Convergence limit used only with Spalart-Allmaras.",
-    "gradient_scheme": "Gradient reconstruction method selected during the first Fluent setup.",
     "pressure_scheme": "Pressure interpolation scheme selected during the first Fluent setup.",
     "momentum_scheme": "Momentum convection scheme selected during the first Fluent setup.",
     "swirl_scheme": "Swirl-velocity convection scheme selected during the first Fluent setup.",
@@ -199,8 +199,6 @@ FIELD_HELP = {
 
 CFD_CHOICE_VALUES = {
     "viscous_model": ("k_omega", "k_epsilon", "spalart_allmaras"),
-    "gradient_scheme": ("green_gauss_cell_based", "green_gauss_node_based",
-                        "least_squares_cell_based"),
     "pressure_scheme": ("second_order", "standard", "presto", "linear",
                         "body_force_weighted"),
     "momentum_scheme": ("first_order_upwind", "second_order_upwind", "quick",
@@ -216,6 +214,17 @@ CFD_CHOICE_VALUES = {
     "nut_scheme": ("first_order_upwind", "second_order_upwind", "quick",
                    "third_order_muscl"),
     "pressure_velocity_coupling": ("simple", "simplec", "piso", "coupled"),
+}
+
+TURBULENCE_EQUATIONS = {
+    "k_omega": ("k", "omega"),
+    "k_epsilon": ("k", "epsilon"),
+    "spalart_allmaras": ("nut",),
+}
+
+TURBULENCE_FIELDS = {"viscous_model"} | {
+    name for equation in ("k", "omega", "epsilon", "nut")
+    for name in (f"residual_{equation}", f"{equation}_scheme")
 }
 
 
@@ -264,10 +273,12 @@ class LinePlot(tk.Canvas):
 
     COLORS = ("#2f6fed", "#e05d44", "#1a9c68", "#9b59b6")
 
-    def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str, **kwargs):
+    def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str,
+                 log_ticks: bool = False, y_step: float | None = None, **kwargs):
         super().__init__(parent, background="white", highlightthickness=1,
                          highlightbackground="#c8ccd2", **kwargs)
         self.title, self.x_label, self.y_label = title, x_label, y_label
+        self.log_ticks, self.y_step = log_ticks, y_step
         self.series: list[tuple[str, list[float]]] = []
         self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
         self.bind("<Configure>", lambda _event: self.redraw())
@@ -285,29 +296,51 @@ class LinePlot(tk.Canvas):
     def redraw(self) -> None:
         self.delete("all")
         width, height = max(self.winfo_width(), 200), max(self.winfo_height(), 140)
-        left, top, right, bottom = 52, 30, width - 18, height - 35
+        left, top, right, bottom = 70, 40, width - 18, height - 48
         self.create_text(12, 10, text=self.title, anchor="nw", font=("Segoe UI", 10, "bold"), fill=self.palette["text"])
         self.create_line(left, top, left, bottom, right, bottom, fill=self.palette["axis"])
         self.create_text((left + right) / 2, height - 8, text=self.x_label, fill=self.palette["muted"], font=("Segoe UI", 8))
         self.create_text(8, (top + bottom) / 2, text=self.y_label, angle=90, fill=self.palette["muted"], font=("Segoe UI", 8))
-        values = [value for _, items in self.series for value in items]
+        values = [value for _, items in self.series for value in items if math.isfinite(value)]
+        low, high = (min(values), max(values)) if values else ((-6, 0) if self.log_ticks else (0, 1))
+        if abs(high - low) < 1e-12:
+            padding = self.y_step or 0.5
+            low, high = low - padding, high + padding
+        step = 1.0 if self.log_ticks else self.y_step or (high - low) / 4
+        first, last = math.floor(low / step), math.ceil(high / step)
+        low, high = first * step, last * step
+        for tick in range(first, last + 1):
+            value = tick * step
+            y = bottom - (value - low) * (bottom - top) / (high - low)
+            self.create_line(left, y, right, y, fill=self.palette["axis"], stipple="gray50")
+            label = f"10^{tick}" if self.log_ticks else f"{value:.3g}"
+            self.create_text(left - 6, y, text=label, anchor="e", fill=self.palette["muted"], font=("Segoe UI", 8))
+            minor = ([value + math.log10(n) for n in range(2, 10)] if self.log_ticks
+                     else [value + step * n / 5 for n in range(1, 5)])
+            for position in minor:
+                if low < position < high:
+                    y_minor = bottom - (position - low) * (bottom - top) / (high - low)
+                    self.create_line(left, y_minor, right, y_minor, fill=self.palette["grid"], dash=(2, 4))
+        longest = max((len(items) for _, items in self.series), default=0)
+        x_max = max(2, longest)
+        x_step = max(1, math.ceil((x_max - 1) / 6))
+        for index in range(1, x_max + 1):
+            x = left + (index - 1) * (right - left) / (x_max - 1)
+            major = (index - 1) % x_step == 0 or index == x_max
+            self.create_line(x, top, x, bottom, fill=self.palette["axis"] if major else self.palette["grid"], dash=() if major else (2, 4))
+            if major:
+                self.create_text(x, bottom + 12, text=str(index), fill=self.palette["muted"], font=("Segoe UI", 8))
+            if index < x_max and x_step == 1:
+                middle = x + (right - left) / (x_max - 1) / 2
+                self.create_line(middle, top, middle, bottom, fill=self.palette["grid"], dash=(2, 4))
         if not values:
             self.create_text(width / 2, height / 2, text="No results yet", fill=self.palette["muted"])
             return
-        low, high = min(values), max(values)
-        if abs(high - low) < 1e-12:
-            low, high = low - 0.5, high + 0.5
-        longest = max(len(items) for _, items in self.series)
-        for tick in range(5):
-            y = bottom - tick * (bottom - top) / 4
-            value = low + tick * (high - low) / 4
-            self.create_line(left, y, right, y, fill=self.palette["grid"])
-            self.create_text(left - 6, y, text=f"{value:.3g}", anchor="e", fill=self.palette["muted"], font=("Segoe UI", 8))
         for series_index, (name, items) in enumerate(self.series):
             color = self.COLORS[series_index % len(self.COLORS)]
             coordinates: list[float] = []
             for index, value in enumerate(items):
-                x = left if longest <= 1 else left + index * (right - left) / (longest - 1)
+                x = left + index * (right - left) / (x_max - 1)
                 y = bottom - (value - low) * (bottom - top) / (high - low)
                 coordinates.extend((x, y))
             if len(coordinates) >= 4:
@@ -332,6 +365,10 @@ class OpTurboApp(tk.Tk):
         self.store: ProjectStore | None = None
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.stop_requested = threading.Event()
+        self.terminate_requested = threading.Event()
+        self.residual_series: dict[str, list[float]] = {}
+        self.residual_columns: list[str] = []
+        self.outer_series: dict[str, list[float]] = {}
         self.worker: threading.Thread | None = None
         self.history: list[dict] = []
         self.best_cp = float("-inf")
@@ -354,9 +391,9 @@ class OpTurboApp(tk.Tk):
                     "muted": "#e0e0e0", "accent": "#00d9ff", "grid": "#4a4a4a", "axis": "#ffffff"}
         if settings.theme == "dark":
             return {"background": "#1b1e23", "canvas": "#20242a", "surface": "#292e36", "text": "#eef2f7",
-                    "muted": "#c0c8d2", "accent": "#70b7ff", "grid": "#3a424d", "axis": "#b8c1cc"}
+                    "muted": "#c0c8d2", "accent": settings.accent_color, "grid": "#3a424d", "axis": "#b8c1cc"}
         return {"background": "#f4f6f8", "canvas": "#ffffff", "surface": "#ffffff", "text": "#1d2a3a",
-                "muted": "#59636f", "accent": "#2f6fed", "grid": "#edf0f3", "axis": "#69717d"}
+                "muted": "#59636f", "accent": settings.accent_color, "grid": "#edf0f3", "axis": "#69717d"}
 
     def _configure_style(self) -> None:
         """Apply the current visual scale and colour palette to ttk widgets."""
@@ -379,19 +416,22 @@ class OpTurboApp(tk.Tk):
         style.configure("Title.TLabel", font=("Segoe UI", max(14, size + 6), "bold"), foreground=colors["text"])
         style.configure("Subtitle.TLabel", font=("Segoe UI", size), foreground=colors["muted"])
         style.configure("Accent.TButton", font=("Segoe UI", size, "bold"))
+        style.configure("Accent.TButton", background=colors["accent"], foreground="white")
+        style.map("TNotebook.Tab", background=[("selected", colors["accent"])], foreground=[("selected", "white")])
+        style.configure("Horizontal.TProgressbar", background=colors["accent"])
         style.configure("Status.TLabel", padding=(8, 4), foreground=colors["muted"])
 
     def _apply_accessibility(self, _event: object | None = None) -> None:
         """Apply appearance preferences immediately without restarting the app."""
         settings = AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
-                                         high_contrast=self.high_contrast_var.get())
+                                         high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get())
         self.palette = self._theme_palette(settings)
         self.config_model.accessibility = settings
         self._configure_style()
         for canvas in (getattr(self, "domain_canvas", None), getattr(self, "duct_canvas", None)):
             if canvas:
                 canvas.configure(background=self.palette["canvas"])
-        for plot in (getattr(self, "performance_plot", None), getattr(self, "bem_plot", None)):
+        for plot in (getattr(self, name, None) for name in ("performance_plot", "bem_plot", "residual_plot", "outer_plot")):
             if plot:
                 plot.set_palette({key: self.palette[key] for key in ("canvas", "text", "muted", "grid", "axis")})
         if hasattr(self, "log_text"):
@@ -503,22 +543,53 @@ class OpTurboApp(tk.Tk):
     def _build_workflow_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(tab, text="  Workflow Settings  ")
-        scroll = ScrollableFrame(tab)
-        scroll.pack(fill="both", expand=True)
-        body = scroll.body
-        body.columnconfigure(0, weight=1, uniform="workflow_columns")
-        body.columnconfigure(1, weight=1, uniform="workflow_columns")
-        geometry = ttk.LabelFrame(body, text="Geometry", padding=10)
-        mesh = ttk.LabelFrame(body, text="Meshing", padding=10)
-        cfd = ttk.LabelFrame(body, text="CFD / BEM", padding=10)
-        geometry.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 7), pady=4)
-        mesh.grid(row=0, column=1, sticky="nsew", padx=(7, 0), pady=4)
-        cfd.grid(row=1, column=1, sticky="nsew", padx=(7, 0), pady=4)
-        self._add_dataclass_form(geometry, "geometry", GeometrySettings,
-                                 exclude={"design_type", "duct_angle_deg", "duct_chord", "duct_thickness",
-                                          "duct_flange_length", "duct_flange_angle_deg"})
-        self._add_dataclass_form(mesh, "mesh", MeshSettings)
-        self._add_dataclass_form(cfd, "cfd", CfdSettings)
+        pages = ttk.Notebook(tab)
+        pages.pack(fill="both", expand=True)
+        excluded = {"design_type", "duct_angle_deg", "duct_chord", "duct_thickness",
+                    "duct_flange_length", "duct_flange_angle_deg"}
+        for title, section, cls in (("Geometry", "geometry", GeometrySettings),
+                                    ("Meshing", "mesh", MeshSettings),
+                                    ("CFD / BEM", "cfd", CfdSettings)):
+            scroll = ScrollableFrame(pages)
+            pages.add(scroll, text=title)
+            self._add_dataclass_form(scroll.body, section, cls,
+                                     exclude=(excluded if section == "geometry" else
+                                              TURBULENCE_FIELDS if section == "cfd" else None),
+                                     two_columns=True)
+            if section == "cfd":
+                self.turbulence_panel = ttk.LabelFrame(scroll.body, text="Turbulent viscous model", padding=10)
+                self.turbulence_panel.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
+                self.field_vars[("cfd", "viscous_model")].trace_add("write", self._refresh_turbulence_controls)
+                self._refresh_turbulence_controls()
+
+    def _refresh_turbulence_controls(self, *_args: object) -> None:
+        """Show active-model equations while retaining values for hidden models."""
+        panel = self.turbulence_panel
+        for child in panel.winfo_children():
+            child.destroy()
+        ttk.Label(panel, text="Viscous turbulence model").grid(row=0, column=0, sticky="w", padx=5)
+        model = self.field_vars[("cfd", "viscous_model")]
+        ttk.Combobox(panel, textvariable=model, values=CFD_CHOICE_VALUES["viscous_model"],
+                     state="readonly", width=24).grid(row=0, column=1, sticky="w", padx=5)
+        ttk.Label(panel, text="Only active equations are shown. Switching models preserves your settings.",
+                  style="Subtitle.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=6)
+        for column, equation in enumerate(TURBULENCE_EQUATIONS.get(model.get(), ())):
+            group = ttk.LabelFrame(panel, text=equation, padding=8)
+            group.grid(row=2, column=column, sticky="new", padx=5)
+            for row, name in enumerate((f"residual_{equation}", f"{equation}_scheme")):
+                ttk.Label(group, text=LABELS[name]).grid(row=row * 3, column=0, sticky="w")
+                variable = self.field_vars[("cfd", name)]
+                if name in CFD_CHOICE_VALUES:
+                    control = ttk.Combobox(group, textvariable=variable, values=CFD_CHOICE_VALUES[name],
+                                            state="readonly", width=24)
+                else:
+                    control = ttk.Entry(group, textvariable=variable, width=24)
+                control.grid(row=row * 3 + 1, column=0, sticky="w", pady=3)
+                ttk.Label(group, text=FIELD_HELP[name], style="Subtitle.TLabel", wraplength=330,
+                          justify="left").grid(row=row * 3 + 2, column=0, sticky="w", pady=(0, 8))
+                ToolTip(control, FIELD_HELP[name])
+        for column in (0, 1):
+            panel.columnconfigure(column, weight=1, uniform="turbulence")
 
     def _build_optimization_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=12)
@@ -538,6 +609,8 @@ class OpTurboApp(tk.Tk):
         self.start_button.pack(fill="x", pady=3)
         self.stop_button = ttk.Button(actions, text="Stop after current candidate", command=self._stop, state="disabled")
         self.stop_button.pack(fill="x", pady=3)
+        self.terminate_button = ttk.Button(actions, text="Terminate whole process", command=self._terminate, state="disabled")
+        self.terminate_button.pack(fill="x", pady=3)
         ttk.Label(results, text="Optimization progress", style="Title.TLabel").pack(anchor="w")
         self.progress = ttk.Progressbar(results, mode="determinate")
         self.progress.pack(fill="x", pady=8)
@@ -559,11 +632,15 @@ class OpTurboApp(tk.Tk):
         tab.rowconfigure(0, weight=1, uniform="monitor_rows")
         tab.rowconfigure(1, weight=1, uniform="monitor_rows")
         log_frame = ttk.LabelFrame(tab, text="Fluent and pipeline log", padding=5)
-        performance = ttk.LabelFrame(tab, text="Cp / Ct history", padding=5)
-        bem = ttk.LabelFrame(tab, text="BEM distributions", padding=5)
+        plots = ttk.Notebook(tab)
+        plots.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(5, 0))
+        performance = ttk.Frame(plots)
+        bem = ttk.Frame(plots)
+        residual = ttk.Frame(plots)
+        outer = ttk.Frame(plots)
+        for frame, title in ((performance, "Candidates"), (bem, "BEM"), (residual, "Live residuals"), (outer, "Outer Cp / Ct")):
+            plots.add(frame, text=title)
         log_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 5))
-        performance.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=(0, 5))
-        bem.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(5, 0))
         self.log_text = tk.Text(log_frame, wrap="none", background="#121820", foreground="#dce5ef",
                                 insertbackground="white", font=("Consolas", 9), state="disabled")
         yscroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
@@ -578,6 +655,10 @@ class OpTurboApp(tk.Tk):
         self.performance_plot.pack(fill="both", expand=True)
         self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)", height=260)
         self.bem_plot.pack(fill="both", expand=True)
+        self.residual_plot = LinePlot(residual, "Current Fluent run", "Solver iteration sample (-)", "Residual (-)", log_ticks=True)
+        self.residual_plot.pack(fill="both", expand=True)
+        self.outer_plot = LinePlot(outer, "Current candidate coupling", "Outer iteration (-)", "Cp / Ct (-)", y_step=0.1)
+        self.outer_plot.pack(fill="both", expand=True)
 
     def _build_accessibility_tab(self) -> None:
         """Build visual and keyboard-use settings that are safe to change at runtime."""
@@ -591,12 +672,13 @@ class OpTurboApp(tk.Tk):
         self.theme_var = tk.StringVar(value="light")
         self.text_scale_var = tk.StringVar(value="100")
         self.high_contrast_var = tk.BooleanVar(value=False)
+        self.accent_var = tk.StringVar(value="#2f6fed")
         ttk.Label(panel, text="Theme").grid(row=2, column=0, sticky="w", pady=5)
         theme = ttk.Combobox(panel, textvariable=self.theme_var, values=("light", "dark"), state="readonly", width=14)
         theme.grid(row=2, column=1, sticky="w", pady=5)
         ttk.Label(panel, text="Light uses the default palette; dark reduces screen brightness.", style="Subtitle.TLabel", wraplength=420).grid(row=3, column=1, sticky="w")
         ttk.Label(panel, text="Text size").grid(row=4, column=0, sticky="w", pady=(12, 5))
-        text_scale = ttk.Combobox(panel, textvariable=self.text_scale_var, values=("90", "100", "110", "125", "150"), state="readonly", width=14)
+        text_scale = ttk.Combobox(panel, textvariable=self.text_scale_var, values=("90", "100", "110", "125", "150", "175", "200"), state="readonly", width=14)
         text_scale.grid(row=4, column=1, sticky="w", pady=(12, 5))
         ttk.Label(panel, text="Scales interface text from 90% to 150%.", style="Subtitle.TLabel").grid(row=5, column=1, sticky="w")
         contrast = ttk.Checkbutton(panel, text="High contrast", variable=self.high_contrast_var, command=self._apply_accessibility)
@@ -612,12 +694,26 @@ class OpTurboApp(tk.Tk):
         ToolTip(text_scale, "Change the size of text throughout the application.")
         ToolTip(contrast, "Increase colour contrast for easier reading.")
         panel.columnconfigure(1, weight=1)
+        ttk.Label(panel, text="Accent color (blue / teal / purple / orange)").grid(row=10, column=0, sticky="w", pady=12)
+        accent = ttk.Combobox(panel, textvariable=self.accent_var, values=("#2f6fed", "#007d79", "#7540a8", "#a74700"), state="readonly", width=14)
+        accent.grid(row=10, column=1, sticky="w")
+        accent.bind("<<ComboboxSelected>>", self._apply_accessibility)
+        ttk.Label(panel, text="Accent highlights selected tabs, primary actions and progress. High contrast overrides it.", style="Subtitle.TLabel").grid(row=11, column=0, columnspan=2, sticky="w")
 
     def _add_dataclass_form(self, parent: ttk.Frame, section: str, cls: type,
-                            browse_paths: bool = False, exclude: set[str] | None = None) -> None:
+                            browse_paths: bool = False, exclude: set[str] | None = None,
+                            two_columns: bool = False) -> None:
         """Create labeled entries for every field in a settings dataclass."""
         row = 0
-        for item in fields(cls):
+        container = parent
+        all_fields = list(fields(cls))
+        for index, item in enumerate(all_fields):
+            if two_columns and index in (0, (len(all_fields) + 1) // 2):
+                column = 0 if index == 0 else 1
+                parent = ttk.Frame(container, padding=8)
+                parent.grid(row=0, column=column, sticky="new")
+                container.columnconfigure(column, weight=1, uniform="settings")
+                row = 0
             label = LABELS.get(item.name, item.name.replace("_", " ").title())
             default = getattr(cls(), item.name)
             if section == "cfd" and item.name == "tip_loss_model":
@@ -633,13 +729,14 @@ class OpTurboApp(tk.Tk):
                 widget = ttk.Checkbutton(parent, variable=variable)
             else:
                 variable = tk.StringVar()
-                widget = ttk.Entry(parent, textvariable=variable)
+                widget = ttk.Entry(parent, textvariable=variable,
+                                   width=24)
             self.field_vars[(section, item.name)] = variable
             if exclude and item.name in exclude:
                 continue
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
-            widget.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
+            widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
             help_text = FIELD_HELP.get(item.name, f"Controls {label.lower()}.")
             ttk.Label(parent, text=help_text, style="Subtitle.TLabel", wraplength=360,
                       justify="left").grid(row=row + 1, column=1, columnspan=2, sticky="w", padx=5, pady=(0, 5))
@@ -712,6 +809,7 @@ class OpTurboApp(tk.Tk):
         self.theme_var.set(self.config_model.accessibility.theme)
         self.text_scale_var.set(str(self.config_model.accessibility.text_scale))
         self.high_contrast_var.set(self.config_model.accessibility.high_contrast)
+        self.accent_var.set(self.config_model.accessibility.accent_color)
         self.design_variable_sets = {self.config_model.geometry.design_type: self.config_model.design_variables[:]}
         self._make_parsec_rows()
         self._apply_accessibility()
@@ -775,7 +873,7 @@ class OpTurboApp(tk.Tk):
             geometry=build("geometry", GeometrySettings), mesh=build("mesh", MeshSettings),
             cfd=build("cfd", CfdSettings), ga=build("ga", GaSettings),
             accessibility=AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
-                                                high_contrast=self.high_contrast_var.get()), design_variables=variables,
+                                                high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get()), design_variables=variables,
         )
         geometry_values = {
             item.key.split(".", 1)[1]: item.value
@@ -1126,6 +1224,7 @@ class OpTurboApp(tk.Tk):
         self.single_button.configure(state="disabled" if running else "normal")
         self.start_button.configure(state="disabled" if running else "normal")
         self.stop_button.configure(state="normal" if running else "disabled")
+        self.terminate_button.configure(state="normal" if running else "disabled")
 
     def _run_single(self) -> None:
         if not self._require_saved_project():
@@ -1148,13 +1247,14 @@ class OpTurboApp(tk.Tk):
         if self.worker and self.worker.is_alive():
             return
         self.stop_requested.clear()
+        self.terminate_requested.clear()
         self._set_running(True)
         self.status_var.set(status)
         self.worker = threading.Thread(target=target, daemon=True)
         self.worker.start()
 
     def _runner(self) -> PipelineRunner:
-        return PipelineRunner(APP_ROOT, lambda line: self.events.put(("log", line)))
+        return PipelineRunner(APP_ROOT, lambda line: self.events.put(("log", line)), self.terminate_requested.is_set)
 
     def _single_worker(self) -> None:
         try:
@@ -1210,6 +1310,12 @@ class OpTurboApp(tk.Tk):
         self.status_var.set("Stop requested — waiting for the current candidate")
         self._append_log("Stop requested. Active CFD and any overlapping preparation will finish safely. No further CFD candidate will start.")
 
+    def _terminate(self) -> None:
+        """Cancel scheduling and kill active external process trees without deleting results."""
+        self.stop_requested.set()
+        self.terminate_requested.set()
+        self.status_var.set("Terminating active processes; partial results will be retained")
+
     def _poll_events(self) -> None:
         try:
             while True:
@@ -1237,6 +1343,32 @@ class OpTurboApp(tk.Tk):
         self.after(100, self._poll_events)
 
     def _append_log(self, line: str) -> None:
+        if "[4/4]" in line or "Stage 4" in line:
+            self.outer_series.clear()
+            self.outer_plot.set_series([])
+        tokens = line.lower().split()
+        if "iter" in tokens and "continuity" in tokens:
+            if not self.residual_columns:
+                self.residual_series.clear()
+            self.residual_columns = tokens[1:]
+        elif self.residual_columns and tokens and tokens[0].isdigit():
+            for name, value in zip(self.residual_columns, tokens[1:]):
+                if name in {"continuity", "x-velocity", "y-velocity", "z-velocity", "swirl", "k", "epsilon", "omega", "nut"}:
+                    try:
+                        number = float(value)
+                        if number > 0 and math.isfinite(number):
+                            self.residual_series.setdefault(name, []).append(math.log10(number))
+                    except ValueError:
+                        pass
+            self.residual_plot.set_series(list(self.residual_series.items()))
+        match = re.search(r"outer\s+(\d+):\s+(Cp|Ct)=([-+\d.eE]+)", line)
+        if match:
+            iteration, name, value = match.groups()
+            if int(iteration) == 1 and name == "Cp":
+                self.outer_series.clear()
+            self.outer_series.setdefault(name, []).append(float(value))
+            self.outer_plot.set_series(list(self.outer_series.items()))
+            self.residual_columns = []
         self.log_text.configure(state="normal")
         self.log_text.insert("end", line + "\n")
         self.log_text.see("end")
