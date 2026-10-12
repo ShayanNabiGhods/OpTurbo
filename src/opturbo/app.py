@@ -387,6 +387,7 @@ class OpTurboApp(tk.Tk):
         self.history_lock = threading.Lock()
         self.best_cp = float("-inf")
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
+        self.bontempo_controls: list[ttk.Widget] = []
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
         self.variable_controls: dict[str, tuple[ttk.Widget, ...]] = {}
         self.design_variable_sets: dict[str, list[VariableSpec]] = {}
@@ -534,9 +535,8 @@ class OpTurboApp(tk.Tk):
         design_picker.bind("<<ComboboxSelected>>", self._switch_design_type)
         ttk.Label(left, text="Only variables used by the selected design are shown. Unticked rows stay fixed.",
                   style="Subtitle.TLabel", wraplength=500).pack(anchor="w", pady=(0, 8))
-        scroll = ScrollableFrame(left)
-        scroll.pack(fill="both", expand=True)
-        self.parsec_body = scroll.body
+        self.parsec_body = ttk.Frame(left)
+        self.parsec_body.pack(fill="both", expand=True)
         controls = ttk.Frame(left)
         controls.pack(fill="x", pady=8)
         ttk.Button(controls, text="Update preview", command=self._update_preview_from_fields).pack(side="left")
@@ -560,22 +560,74 @@ class OpTurboApp(tk.Tk):
         self.notebook.add(tab, text="  Workflow Settings  ")
         pages = ttk.Notebook(tab)
         pages.pack(fill="both", expand=True)
-        excluded = {"design_type", "duct_angle_deg", "duct_chord", "duct_thickness",
-                    "duct_flange_length", "duct_flange_angle_deg"}
         for title, section, cls in (("Geometry", "geometry", GeometrySettings),
                                     ("Meshing", "mesh", MeshSettings),
                                     ("CFD / BEM", "cfd", CfdSettings)):
-            scroll = ScrollableFrame(pages)
-            pages.add(scroll, text=title)
-            self._add_dataclass_form(scroll.body, section, cls,
-                                     exclude=(excluded if section == "geometry" else
-                                              TURBULENCE_FIELDS if section == "cfd" else None),
-                                     two_columns=True)
             if section == "cfd":
-                self.turbulence_panel = ttk.LabelFrame(scroll.body, text="Turbulent viscous model", padding=10)
-                self.turbulence_panel.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
+                page = ScrollableFrame(pages)
+                body = page.body
+            else:
+                page = ttk.Frame(pages, padding=8)
+                body = page
+            pages.add(page, text=title)
+            # Initialize a persistent variable for every setting before placing
+            # fields into separate groups (including currently hidden equations).
+            self._add_dataclass_form(body, section, cls,
+                                     exclude={item.name for item in fields(cls)})
+            if section == "geometry":
+                groups = (
+                    ("Outer domain", ("domain_length", "domain_height", "domain_origin_x", "domain_origin_r")),
+                    ("Resolution region", ("resolution_length", "resolution_inlet_radius", "resolution_origin_x", "resolution_origin_r")),
+                    ("Actuator disk", ("actuator_radial_span", "actuator_thickness", "actuator_origin_x")),
+                    ("Hub and duct placement", ("hub_length", "hub_radius", "hub_origin_x", "hub_origin_r", "duct_origin_x", "duct_origin_r", "duct_points")),
+                )
+                self._place_setting_groups(body, section, cls, groups, exclude={
+                    "design_type", "duct_angle_deg", "duct_chord", "duct_thickness",
+                    "duct_flange_length", "duct_flange_angle_deg"})
+            elif section == "mesh":
+                groups = (
+                    ("Global mesh controls", ("global_size_cm", "growth_rate", "cpu_cores", "method", "curvature_angle_deg")),
+                    ("Local sizing", ("resolution_size_cm", "duct_size_cm", "hub_size_cm")),
+                    ("Inflation layers", ("inflation_layers", "inflation_max_thickness_cm")),
+                )
+                self._place_setting_groups(body, section, cls, groups)
+            else:
+                groups = (
+                    ("Flow and rotor", ("flow_speed_m_s", "density_kg_m3", "viscosity_pa_s", "rotor_radius_m", "hub_radius_m", "blades", "omega_rad_s", "pitch_deg")),
+                    ("BEM correction", ("stations", "tip_loss_model")),
+                    ("Fluent / BEM coupling", ("max_outer_iterations", "fluent_iterations", "tolerance", "relaxation", "processors", "keep_iteration_data")),
+                    ("Fluent discretization", ("pressure_scheme", "momentum_scheme", "swirl_scheme", "pressure_velocity_coupling")),
+                    ("General residual criteria", ("residual_continuity", "residual_x_velocity", "residual_y_velocity", "residual_swirl")),
+                )
+                columns = self._place_setting_groups(body, section, cls, groups)
+                self.turbulence_panel = ttk.LabelFrame(
+                    columns[1], text="Turbulence model and equation residuals", padding=10)
+                self.turbulence_panel.pack(fill="x", padx=7, pady=6)
                 self.field_vars[("cfd", "viscous_model")].trace_add("write", self._refresh_turbulence_controls)
                 self._refresh_turbulence_controls()
+                self.bontempo_panel = ttk.LabelFrame(
+                    columns[1], text="Bontempo g coefficients", padding=8)
+                self.bontempo_panel.pack(fill="x", padx=7, pady=6)
+                self._add_dataclass_form(self.bontempo_panel, section, cls,
+                                         include={"bontempo_g_a", "bontempo_g_b", "bontempo_g_c"},
+                                         inline_help=False)
+                self.field_vars[("cfd", "tip_loss_model")].trace_add("write", self._refresh_bontempo_controls)
+                self._refresh_bontempo_controls()
+
+    def _place_setting_groups(self, parent: ttk.Frame, section: str, cls: type,
+                              groups: tuple[tuple[str, tuple[str, ...]], ...],
+                              exclude: set[str] | None = None) -> tuple[ttk.Frame, ttk.Frame]:
+        """Stack related settings groups in two independent compact columns."""
+        columns = (ttk.Frame(parent), ttk.Frame(parent))
+        for column, frame in enumerate(columns):
+            frame.grid(row=0, column=column, sticky="new")
+            parent.columnconfigure(column, weight=1, uniform=f"{section}_groups")
+        for index, (title, names) in enumerate(groups):
+            group = ttk.LabelFrame(columns[index % 2], text=title, padding=8)
+            group.pack(fill="x", padx=7, pady=6)
+            self._add_dataclass_form(group, section, cls, exclude=exclude,
+                                     include=set(names), inline_help=False)
+        return columns
 
     def _refresh_turbulence_controls(self, *_args: object) -> None:
         """Show active-model equations while retaining values for hidden models."""
@@ -606,17 +658,23 @@ class OpTurboApp(tk.Tk):
         for column in (0, 1):
             panel.columnconfigure(column, weight=1, uniform="turbulence")
 
+    def _refresh_bontempo_controls(self, *_args: object) -> None:
+        """Gray empirical g coefficients unless the Bontempo correction is selected."""
+        enabled = self.field_vars[("cfd", "tip_loss_model")].get() == "bontempo2025"
+        for control in self.bontempo_controls:
+            control.configure(state="normal" if enabled else "disabled")
+
     def _build_optimization_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(tab, text="  Optimization  ")
         pane = ttk.Panedwindow(tab, orient="horizontal")
         pane.pack(fill="both", expand=True)
-        settings = ScrollableFrame(pane)
+        settings = ttk.Frame(pane, padding=8)
         results = ttk.Frame(pane, padding=(12, 0))
         pane.add(settings, weight=1)
         pane.add(results, weight=2)
-        self._add_dataclass_form(settings.body, "ga", GaSettings)
-        actions = ttk.Frame(settings.body)
+        self._add_dataclass_form(settings, "ga", GaSettings)
+        actions = ttk.Frame(settings)
         actions.grid(row=50, column=0, columnspan=3, sticky="ew", pady=16)
         self.single_button = ttk.Button(actions, text="Evaluate current design", command=self._run_single)
         self.single_button.pack(fill="x", pady=3)
@@ -720,7 +778,9 @@ class OpTurboApp(tk.Tk):
 
     def _add_dataclass_form(self, parent: ttk.Frame, section: str, cls: type,
                             browse_paths: bool = False, exclude: set[str] | None = None,
-                            two_columns: bool = False) -> None:
+                            two_columns: bool = False,
+                            include: set[str] | None = None,
+                            inline_help: bool = True) -> None:
         """Create labeled entries for every field in a settings dataclass."""
         row = 0
         container = parent
@@ -732,36 +792,40 @@ class OpTurboApp(tk.Tk):
                 parent.grid(row=0, column=column, sticky="new")
                 container.columnconfigure(column, weight=1, uniform="settings")
                 row = 0
+            key = (section, item.name)
             label = LABELS.get(item.name, item.name.replace("_", " ").title())
             default = getattr(cls(), item.name)
+            variable = self.field_vars.get(key)
+            if variable is None:
+                variable = tk.BooleanVar() if isinstance(default, bool) else tk.StringVar()
+                self.field_vars[key] = variable
+            if exclude and item.name in exclude:
+                continue
+            if include is not None and item.name not in include:
+                continue
             if section == "cfd" and item.name == "tip_loss_model":
-                variable = tk.StringVar()
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=("prandtl", "bontempo2025"))
             elif section == "cfd" and item.name in CFD_CHOICE_VALUES:
-                variable = tk.StringVar()
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=CFD_CHOICE_VALUES[item.name])
             elif section == "mesh" and item.name == "method":
-                variable = tk.StringVar()
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=("Quad", "Tri", "MultiZone"))
             elif isinstance(default, bool):
-                variable: tk.Variable = tk.BooleanVar()
                 widget = ttk.Checkbutton(parent, variable=variable)
             else:
-                variable = tk.StringVar()
-                widget = ttk.Entry(parent, textvariable=variable,
-                                   width=24)
-            self.field_vars[(section, item.name)] = variable
-            if exclude and item.name in exclude:
-                continue
+                widget = ttk.Entry(parent, textvariable=variable, width=24)
+            if section == "cfd" and item.name in {"bontempo_g_a", "bontempo_g_b", "bontempo_g_c"}:
+                self.bontempo_controls.append(widget)
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
             widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
             help_text = FIELD_HELP.get(item.name, f"Controls {label.lower()}.")
-            ttk.Label(parent, text=help_text, style="Subtitle.TLabel", wraplength=360,
-                      justify="left").grid(row=row + 1, column=1, columnspan=2, sticky="w", padx=5, pady=(0, 5))
+            if inline_help:
+                ttk.Label(parent, text=help_text, style="Subtitle.TLabel", wraplength=360,
+                          justify="left").grid(row=row + 1, column=1, columnspan=2,
+                                               sticky="w", padx=5, pady=(0, 5))
             ToolTip(label_widget, help_text)
             ToolTip(widget, help_text)
             if section == "tools" and item.name == "handoff_dir":
@@ -769,7 +833,7 @@ class OpTurboApp(tk.Tk):
                 ttk.Label(parent, text="Protected", foreground="#a34a2a").grid(row=row, column=2, padx=4)
             elif browse_paths:
                 ttk.Button(parent, text="Browse…", command=lambda var=variable: self._browse_tool(var)).grid(row=row, column=2, padx=4)
-            row += 2
+            row += 2 if inline_help else 1
         parent.columnconfigure(1, weight=1)
 
     def _make_parsec_rows(self) -> None:
@@ -777,7 +841,7 @@ class OpTurboApp(tk.Tk):
             child.destroy()
         self.parsec_rows.clear()
         self.variable_controls.clear()
-        for column, text in ((0, "Use"), (1, "Parameter"), (2, "Minimum"), (3, "Value"), (4, "Maximum"), (5, "Description")):
+        for column, text in ((0, "Use"), (1, "Parameter"), (2, "Minimum"), (3, "Value"), (4, "Maximum")):
             ttk.Label(self.parsec_body, text=text).grid(row=0, column=column, sticky="w", padx=3)
         for row, spec in enumerate(self.config_model.design_variables, start=1):
             enabled = tk.BooleanVar(value=spec.optimize)
@@ -795,8 +859,6 @@ class OpTurboApp(tk.Tk):
             value_entry.grid(row=row, column=3, padx=3)
             maximum_entry.grid(row=row, column=4, padx=3)
             hint = f"Select to optimize {spec.label.lower()}; otherwise its current value stays fixed."
-            description = ttk.Label(self.parsec_body, text=hint, style="Subtitle.TLabel", wraplength=250, justify="left")
-            description.grid(row=row, column=5, sticky="w", padx=(8, 3))
             ToolTip(use, hint)
             ToolTip(label, hint)
             ToolTip(value_entry, f"Current design value for {spec.label.lower()}.")
@@ -811,7 +873,6 @@ class OpTurboApp(tk.Tk):
         self.parsec_body.columnconfigure(1, weight=1)
         for column in (0, 2, 3, 4):
             self.parsec_body.columnconfigure(column, weight=0)
-        self.parsec_body.columnconfigure(5, weight=1)
 
     def _set_variable_row_state(self, key: str, enabled: bool) -> None:
         """Gray and lock fixed design-variable rows while keeping their checkbox usable."""
