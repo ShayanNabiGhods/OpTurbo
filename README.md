@@ -62,7 +62,8 @@ folder such as `C:\OpTurbo\Projects\baseline-study`.
    the candidate folder.
 3. **ANSYS Meshing** receives a candidate-specific Workbench journal and a
    copy of the original named-selection/mesh script with only the exposed mesh
-   values substituted. Workbench uses the short staging folder
+   values substituted. CPU cores can be set explicitly or left as
+   **Program Controlled** to use the ANSYS Meshing default. Workbench uses the short staging folder
    `C:\OpTurbo\Temp Files\Meshing` and exports `axisymmetric_mesh.msh` back to
    the candidate folder.
 4. **Fluent/BEM** copies the baseline case and UDF resources into the candidate

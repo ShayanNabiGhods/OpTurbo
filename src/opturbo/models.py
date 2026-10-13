@@ -71,7 +71,7 @@ class MeshSettings:
 
     global_size_cm: float = 5.0
     growth_rate: float = 1.1
-    cpu_cores: int = 4
+    cpu_cores: int | None = 4
     method: str = "Quad"
     curvature_angle_deg: float = 6.0
     resolution_size_cm: float = 0.5

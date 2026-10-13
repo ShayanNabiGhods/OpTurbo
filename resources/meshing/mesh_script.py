@@ -293,7 +293,8 @@ mesh = Model.Mesh
 
 mesh.ElementSize = Quantity(GLOBAL_SIZE_CM, "cm")
 mesh.GrowthRateSF = GROWTH_RATE
-mesh.NumberOfCPUsForParallelPartMeshing = CPU_CORES_FOR_PARALLEL_PART_MESHING
+if CPU_CORES_FOR_PARALLEL_PART_MESHING is not None:
+    mesh.NumberOfCPUsForParallelPartMeshing = CPU_CORES_FOR_PARALLEL_PART_MESHING
 mesh.CurvatureNormalAngle = Quantity(CURVATURE_ANGLE_DEG, "deg")
 mesh.AutomaticMeshBasedDefeaturing = 1
 mesh.DefeatureTolerance = Quantity(0.01, "cm")
@@ -302,9 +303,9 @@ mesh.DefeatureTolerance = Quantity(0.01, "cm")
 automatic_method = mesh.AddAutomaticMethod()
 automatic_method.Location = whole_domain_body.Location
 method_types = {
-    "Quad": MethodType.AllQuad,
+    "Quad": MethodType.Automatic,
     "Tri": MethodType.AllTriAllTet,
-    "MultiZone": MethodType.MultiZone,
+    "MultiZone": MethodType.QuadTri,
 }
 if MESH_METHOD not in method_types:
     raise ValueError("Unsupported meshing method: {}".format(MESH_METHOD))

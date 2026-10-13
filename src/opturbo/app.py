@@ -159,7 +159,7 @@ FIELD_HELP = {
     "duct_points": "Number of spline samples used to construct the duct; higher values make a smoother curve.",
     "global_size_cm": "Default mesh element size away from locally refined regions, in centimetres.",
     "growth_rate": "Controls the rate at which element sizes grow away from refined regions.",
-    "cpu_cores": "Number of CPU cores ANSYS Meshing uses for parallel part meshing.",
+    "cpu_cores": "Choose Program Controlled to use ANSYS Meshing's default, or select an explicit core count.",
     "method": "Element method applied to the whole-domain body.",
     "curvature_angle_deg": "Curvature angle used by the mesher to refine curved geometry.",
     "resolution_size_cm": "Target mesh size inside the resolution region, in centimetres.",
@@ -228,6 +228,8 @@ CFD_CHOICE_VALUES = {
                    "third_order_muscl"),
     "pressure_velocity_coupling": ("simple", "simplec", "piso", "coupled"),
 }
+
+CPU_CORE_CHOICES = ("Program Controlled", *(str(value) for value in range(1, 129)))
 
 TURBULENCE_EQUATIONS = {
     "k_omega": ("k", "omega"),
@@ -812,6 +814,9 @@ class OpTurboApp(tk.Tk):
             elif section == "mesh" and item.name == "method":
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=("Quad", "Tri", "MultiZone"))
+            elif section == "mesh" and item.name == "cpu_cores":
+                widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
+                                      values=CPU_CORE_CHOICES)
             elif isinstance(default, bool):
                 widget = ttk.Checkbutton(parent, variable=variable)
             else:
@@ -887,7 +892,10 @@ class OpTurboApp(tk.Tk):
             settings = getattr(self.config_model, section)
             for item in fields(settings):
                 variable = self.field_vars[(section, item.name)]
-                variable.set(getattr(settings, item.name))
+                value = getattr(settings, item.name)
+                if section == "mesh" and item.name == "cpu_cores":
+                    value = "Program Controlled" if value is None else str(value)
+                variable.set(value)
         self.design_type_var.set(self.config_model.geometry.design_type)
         self.theme_var.set(self.config_model.accessibility.theme)
         self.text_scale_var.set(str(self.config_model.accessibility.text_scale))
@@ -934,7 +942,10 @@ class OpTurboApp(tk.Tk):
                 if isinstance(default, bool):
                     values[item.name] = bool(raw)
                 elif isinstance(default, int):
-                    values[item.name] = int(raw)
+                    if section == "mesh" and item.name == "cpu_cores":
+                        values[item.name] = None if raw == "Program Controlled" else int(raw)
+                    else:
+                        values[item.name] = int(raw)
                 elif isinstance(default, float):
                     values[item.name] = float(raw)
                 else:
@@ -996,7 +1007,7 @@ class OpTurboApp(tk.Tk):
             raise ValueError("All mesh sizes and inflation thickness must be positive.")
         if config.mesh.curvature_angle_deg <= 0:
             raise ValueError("Mesh curvature angle must be positive.")
-        if config.mesh.cpu_cores < 1:
+        if config.mesh.cpu_cores is not None and config.mesh.cpu_cores < 1:
             raise ValueError("CPU cores for parallel part meshing must be at least one.")
         if config.mesh.method not in {"Quad", "Tri", "MultiZone"}:
             raise ValueError("Choose Quad, Tri, or MultiZone as the meshing method.")
