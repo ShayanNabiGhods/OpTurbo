@@ -10,12 +10,13 @@ from .reports import read_report
 
 
 def initial_sources(blade):
-    """Create the current smooth startup source field."""
+    """Create a smooth startup field with thickness-independent integrated load."""
     axial, tangential = [], []
+    thickness_scale = 0.005 / blade.thickness
     for radius in blade.radius:
         mu = (radius - 0.045) / (0.45 - 0.045)
-        axial.append(-10000 * math.sin(math.pi * mu) ** 2)
-        tangential.append(1000.0)
+        axial.append(-10000 * thickness_scale * math.sin(math.pi * mu) ** 2)
+        tangential.append(1000.0 * thickness_scale)
     return axial, tangential
 
 
@@ -79,6 +80,7 @@ def run_coupling(config):
         result_data = {
             "iteration": iteration, "cp": value.cp, "ct": value.ct,
             "thrust": value.thrust, "torque": value.torque, "power": value.power,
+            "actuator_thickness_m": blade.thickness,
             "a": result.a, "a_prime": result.ap, "phi_deg": result.phi,
             "alpha_deg": result.alpha, "reynolds": result.reynolds,
             "loss_factor": result.loss, "tip_loss_model": turbine.tip_loss_model,

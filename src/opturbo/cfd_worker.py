@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import shutil
 import sys
@@ -52,6 +53,11 @@ def main():
     if args.config:
         settings = json.loads(Path(args.config).read_text(encoding="utf-8"))
         config.update(settings)
+        actuator_thickness = float(settings.get(
+            "actuator_thickness_m", config["blade"].thickness))
+        if not math.isfinite(actuator_thickness) or actuator_thickness <= 0:
+            raise ValueError("Actuator thickness must be a positive finite value in metres.")
+        config["blade"].thickness = actuator_thickness
         flow = config["flow"]
         turbine = config["turbine"]
         flow.speed = settings.get("flow_speed_m_s", flow.speed)

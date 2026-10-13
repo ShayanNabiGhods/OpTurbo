@@ -254,6 +254,8 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "viscosity_pa_s": config.cfd.viscosity_pa_s,
             "rotor_radius_m": config.cfd.rotor_radius_m,
             "hub_radius_m": config.cfd.hub_radius_m,
+            # Match BEM's force-per-volume scaling to the generated mesh zone.
+            "actuator_thickness_m": config.geometry.actuator_thickness / 1000.0,
             "blades": config.cfd.blades,
             "omega_rad_s": config.cfd.omega_rad_s,
             "pitch_deg": config.cfd.pitch_deg,

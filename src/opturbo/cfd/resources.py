@@ -37,7 +37,7 @@ def _linear(x, y, value):
 
 
 def load_blade(folder, stations=36, thickness=0.005):
-    """Interpolate the reference blade onto the requested stations."""
+    """Interpolate the blade and set the actuator-disk thickness in metres."""
     rows = numbers(Path(folder) / "ntnu_geometry.csv")
     radius, chord, twist = zip(*rows)
     if stations == 27:

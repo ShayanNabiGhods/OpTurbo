@@ -299,17 +299,21 @@ mesh.CurvatureNormalAngle = Quantity(CURVATURE_ANGLE_DEG, "deg")
 mesh.AutomaticMeshBasedDefeaturing = 1
 mesh.DefeatureTolerance = Quantity(0.01, "cm")
 
-# Apply the selected automatic method to the whole-domain body.
-automatic_method = mesh.AddAutomaticMethod()
-automatic_method.Location = whole_domain_body.Location
 method_types = {
     "Quad": MethodType.Automatic,
     "Tri": MethodType.AllTriAllTet,
     "MultiZone": MethodType.QuadTri,
 }
-if MESH_METHOD not in method_types:
+if MESH_METHOD == "Default":
+    # No method control: allow ANSYS to choose the method for the body.
+    pass
+elif MESH_METHOD in method_types:
+    # Apply the selected method to the whole-domain body.
+    automatic_method = mesh.AddAutomaticMethod()
+    automatic_method.Location = whole_domain_body.Location
+    automatic_method.Method = method_types[MESH_METHOD]
+else:
     raise ValueError("Unsupported meshing method: {}".format(MESH_METHOD))
-automatic_method.Method = method_types[MESH_METHOD]
 
 # Local controls sized from the corresponding named selections.
 resolution_sizing = create_sizing(

@@ -1,125 +1,107 @@
-# OpTurbo V1.0.0
+# OpTurbo
 
-OpTurbo is a beginner-readable Tkinter desktop application that connects the
-existing DAWT geometry, SpaceClaim, ANSYS Meshing, Fluent, and BEM programs to
-a genetic algorithm. Its objective is to maximize the final power coefficient
-`Cp` by changing whichever variables the user selects for the active duct design.
-
-The original four source folders remain unchanged outside this project. Their
-capabilities are integrated as one standalone application: Python engineering
-modules live under `src/opturbo/`, while SpaceClaim, meshing, Fluent, UDF, and
-table assets live under `resources/`.
+OpTurbo is a Windows desktop application for designing and optimizing ducted
+wind turbines. It connects a Tkinter interface and genetic algorithm to a
+four-stage engineering workflow: FreeCAD geometry, SpaceClaim, ANSYS Meshing,
+and Fluent/BEM. The optimization objective is the final power coefficient
+(`Cp`); thrust coefficient (`Ct`) and BEM distributions are also recorded.
 
 ## Start the application
 
-Use Windows Python 3.10 or newer because FreeCAD, SpaceClaim, Workbench, and
-Fluent are Windows programs in the supplied setup:
+Use Windows Python 3.10 or newer:
 
 ```powershell
 cd "C:\Project Saves\Python Codes\OpTurbo"
 python run.py
 ```
 
-Tkinter is included with the standard Windows Python installer. OpTurbo itself
-has no third-party Python dependencies.
+Tkinter is included with the standard Windows Python installer. Check the
+executable paths on the **Project** tab before running. The default paths are
+configured for FreeCAD 1.1 and ANSYS 2024 R2 (`v242`). Choose a workflow save
+folder outside the source-code folder, for example
+`C:\OpTurbo\Projects\baseline-study`.
 
-Before the first run, check the executable paths on the **Project** tab. The
-defaults match FreeCAD 1.1 and ANSYS 2024 R2 (`v242`). Then choose a workflow
-save folder. Do not choose the source-code folder; use a separate results
-folder such as `C:\OpTurbo\Projects\baseline-study`.
+## Application workflow
 
-## Application layout
+- **Project** — set the project name, results folder, and external application
+  paths.
+- **Design** — choose an airfoil or flanged duct and select which design
+  variables the optimizer may change. Unselected variables stay fixed. The
+  geometry and domain previews update with the design.
+- **Workflow Settings** — configure geometry, meshing, and CFD/BEM. Meshing
+  settings include global and local sizing, growth rate, CPU cores, and method.
+  CPU cores can be **Program Controlled** or explicitly selected. The method
+  can be **Default (ANSYS automatic)**, **Quad**, **Tri**, or **MultiZone**.
+  SpaceClaim uses its supplied recorded script and is not edited in the GUI.
+  CFD/BEM settings include turbulence models and their residual criteria,
+  discretization, pressure-velocity coupling, iteration controls, and loss
+  correction.
+- **Optimization** — evaluate the current design, configure and start the
+  genetic algorithm, resume a saved run, and review candidate results. A run
+  can be stopped safely; active Fluent work and any active overlap preparation
+  are allowed to finish.
+- **Monitor** — review candidate results, BEM distributions, live residuals,
+  and outer-iteration `Cp`/`Ct` plots in separate views.
 
-- **Project** — a compact two-column layout for project storage and executable paths.
-- **Design** — choose an **airfoil** or **flanged** duct. Airfoil designs expose
-  duct angle, chord, and full upper/lower PARSEC controls. Flanged designs expose
-  the lower PARSEC surface, chord, wall thickness, flange length, and flange
-  angle. Tick only the variables to optimize; unticked variables remain fixed.
-  The domain and duct previews update for the selected family and during a run.
-- **Workflow Settings** — geometry, mesh, and CFD/BEM controls combined into one
-  two-column page. Its CFD section also selects the first-outer-iteration Fluent
-  turbulence model, residual criteria, discretization,
-  and pressure-velocity coupling. SpaceClaim remains protected and is intentionally
-  not editable.
-  The turbulence sub-grid shows only the selected model's equations: k/omega
-  for k-omega, k/epsilon for k-epsilon, or turbulent viscosity for
-  Spalart-Allmaras. Hidden model settings are retained when switching models.
-- **Optimization** — single-design evaluation, GA controls, progress, and the
-  ranked stream of Cp/Ct results.
-- **Monitor** — live pipeline/Fluent output on the left, with Cp/Ct history and
-  radial `a`, `a'`, and Prandtl-loss plots stacked on the right.
+## Candidate pipeline
 
-## Four-stage candidate pipeline
+Each candidate passes through these stages:
 
-1. **FreeCAD geometry** receives the selected duct family, domain settings, and
-   the candidate PARSEC dictionary. The airfoil duct and the flanged duct are
-   exported as closed planar faces (not wires). It writes the five individual
-   STEP files and `profile_assembly.step` into the candidate result folder.
-2. **SpaceClaim** is not rewritten or parameterized. OpTurbo copies the
-   assembly to the exact path expected by the recorded script:
-   `C:\OpTurbo\Temp Files\profile_assembly.step`. The original script writes
-   `profile_assembly.scdoc` beside it, and OpTurbo copies that document back to
-   the candidate folder.
-3. **ANSYS Meshing** receives a candidate-specific Workbench journal and a
-   copy of the original named-selection/mesh script with only the exposed mesh
-   values substituted. CPU cores can be set explicitly or left as
-   **Program Controlled** to use the ANSYS Meshing default. Workbench uses the short staging folder
-   `C:\OpTurbo\Temp Files\Meshing` and exports `axisymmetric_mesh.msh` back to
-   the candidate folder.
-4. **Fluent/BEM** copies the baseline case and UDF resources into the candidate
-   folder. The first Fluent journal reads the baseline case and executes
-   `/mesh/replace "axisymmetric_mesh.msh"`. Every outer iteration saves Fluent
-   output and BEM arrays. When **Keep every outer-iteration solution data
-   file** is enabled, each `coupled_solution_N.dat.h5` is retained. The final
-   `Cp` is the GA fitness; `Ct` and the BEM distributions are retained for
-   monitoring.
+1. **FreeCAD** creates the selected duct geometry and exports STEP files to
+   that candidate's results directory.
+2. **SpaceClaim** runs the supplied recorded script against the assembly and
+   saves its document with the candidate artifacts. The script depends on
+   recorded body and face identities, so major topology changes can invalidate
+   it.
+3. **ANSYS Meshing** runs a candidate-specific Workbench journal and mesh
+   script, then exports `axisymmetric_mesh.msh`. In Default method mode, the
+   script leaves the meshing method to ANSYS. The CPU setting likewise supports
+   ANSYS's Program Controlled default.
+4. **Fluent/BEM** loads the baseline case, replaces its mesh, runs the coupled
+   calculation, and saves results. Optional outer-iteration solution files
+   can be retained for later inspection.
 
-The SpaceClaim script relies on recorded body/face identities. A geometry that
-changes topology enough to invalidate those identities will fail safely and
-receive a poor GA fitness. Its log and `failure.json` remain in the candidate
-folder for diagnosis.
+Failed candidates are recorded with diagnostic details in their candidate
+folder and assigned a low fitness so the remaining optimization can continue.
 
-## Genetic algorithm
+### Overlap preparation
 
-In **Workflow Settings > CFD / BEM > Tip-loss correction**, choose `prandtl`
-(the default, preserving the original tip-times-root correction) or
-`bontempo2025` (Bontempo and Manna, Energy Conversion and Management 342,
-120024, page 5, Eq. 6). The latter applies
-`F1 = (2/pi) acos(exp(-g B (R-r)/(2 r sin(phi))))` as its tip correction,
-where `g = exp(-0.229 (B lambda - 22.0116)) + 0.4427` and
-`lambda = omega R / U_infinity`. The Bontempo tip factor is multiplied by
-the conventional Prandtl root-loss factor, so root loss remains active for
-both blade loads. The GUI exposes the three `g` coefficients (A, B, C); their
-defaults are −0.229, 22.0116, and 0.4427, respectively, and are saved with
-project settings and passed into each CFD/BEM run.
-This is the paper's empirical duct calibration, not a universal calibration
-for every optimized duct. The choice is saved with projects and candidates;
-CFD results record `tip_loss_model` and `loss_factor`. Older projects default
-to Prandtl. The monitor labels the chosen correction accordingly.
+The optional experimental overlap setting prepares the next candidate through
+meshing while the current candidate runs Fluent. It applies within one
+generation. The next Fluent run waits until its mesh preparation has finished,
+so Fluent cannot start against an incomplete mesh. This mode uses additional
+memory and may require concurrent ANSYS licenses.
 
-The implementation uses real-valued genes, a baseline individual, random
-initial candidates, tournament selection, arithmetic crossover, Gaussian
-mutation, bounds clamping, and elitism. A fixed random seed makes a run
-repeatable. Failed geometry/mesh/CFD candidates receive a large negative
-fitness so the rest of the population can continue.
+## Optimization and recovery
 
-An interrupted or stopped optimization can be continued with **Resume previous
-optimization**. Completed candidate fitnesses are replayed from the saved
-history, and only candidates without a saved result are sent through the
-engineering pipeline again. Resume requires the same saved workflow settings.
+The genetic algorithm uses real-valued design variables, tournament selection,
+arithmetic crossover, Gaussian mutation, bounds clamping, and elitism. Its
+random seed makes a run reproducible. Start with a small population and a small
+number of generations, and use **Evaluate current design** to check the local
+engineering-software setup first.
 
-Because every CFD evaluation is expensive, begin with a small population and
-one or two generations. Evaluate the current design once before starting a GA
-to verify the complete external-tool installation.
+**Resume previous optimization** continues from saved state. Completed
+candidate results are reused; only candidates without saved results are
+evaluated again. Resume requires workflow settings to match the saved run.
+Project settings, optimization history, and resume state are stored in the
+selected project folder.
 
-## Saved workflow structure
+## BEM loss correction
+
+The tip-loss choices are Prandtl and Bontempo. Prandtl is the default. The
+Bontempo correction uses the empirical coefficients exposed in the GUI and
+saved with project settings. Its tip factor is combined with the conventional
+Prandtl root-loss factor, so root loss remains active. The correction is a
+duct-specific calibration and may not apply to every optimized geometry.
+
+## Results layout
 
 ```text
 chosen-project-folder/
-├── opturbo_project.json          # editable settings; atomically saved
-├── optimization_history.json     # every completed candidate
-├── optimization_state.json       # latest GA run and its resume status
-├── best/best_result.json         # current best design and artifact path
+├── opturbo_project.json
+├── optimization_history.json
+├── optimization_state.json
+├── best/
 ├── logs/
 ├── exports/
 └── candidates/
@@ -133,38 +115,34 @@ chosen-project-folder/
             └── 04_cfd/
 ```
 
-Existing candidate folders are never overwritten. Re-evaluating the same
-generation/candidate creates a `_run02`, `_run03`, and so on.
+Candidate directories preserve pipeline inputs, outputs, and logs for review.
+Repeated evaluations use a new run directory rather than replacing an existing
+candidate's artifacts.
 
-## Source structure
+## Source layout
 
 ```text
+run.py
 src/opturbo/
-├── app.py                 # Tkinter GUI and background coordination
-├── geometry/              # native FreeCAD geometry implementation
-├── geometry_worker.py     # isolated FreeCAD command-line entry point
-├── cfd/                   # native CFD/BEM coupling implementation
-├── cfd_worker.py          # isolated Fluent/BEM command-line entry point
-├── models.py              # all editable settings and variable definitions
-├── optimizer.py           # independent genetic algorithm
-├── parsec.py              # preview and design validation mathematics
-├── storage.py             # atomic project/history persistence
-└── pipeline/
-    ├── process.py         # subprocess and path helpers
-    └── runner.py          # adapters for the four engineering stages
-
+├── app.py                 # Tkinter interface and run coordination
+├── models.py              # project, design, mesh, CFD, and GA settings
+├── optimizer.py           # genetic algorithm
+├── parsec.py              # design validation and preview mathematics
+├── storage.py             # project and optimization-state persistence
+├── geometry/              # FreeCAD geometry generation
+├── cfd/                   # CFD/BEM coupling
+└── pipeline/              # external-process and candidate workflow
 resources/
-├── spaceclaim/            # protected recorded SpaceClaim script
-├── meshing/               # ANSYS mesh script and artifact extractor
-├── fluent/                # baseline case and compiled/source UDF
-└── cfd_tables/             # blade, airfoil, and operating-point data
+├── spaceclaim/            # recorded SpaceClaim script
+├── meshing/               # ANSYS Meshing script and artifact extractor
+├── fluent/                # baseline case and UDF resources
+└── cfd_tables/            # blade, airfoil, and operating-point data
 ```
-
-`AGENTS.md` contains local contributor rules and is intentionally ignored by Git.
 
 ## Verification
 
-The fast tests do not launch engineering software:
+Unit tests and Python compilation can be run without launching the engineering
+applications:
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -172,18 +150,5 @@ python -m unittest discover -s tests -v
 python -m compileall -q src run.py
 ```
 
-A complete integration test requires valid local licenses and installations
-of FreeCAD, SpaceClaim, Workbench/Meshing, and Fluent. Use **Evaluate current
-design** for that test before committing a long optimization run.
-
-V1.0.0 also includes a conservative three-candidate validation optimization:
-
-```powershell
-python scripts\run_small_optimization.py
-```
-
-It changes only airfoil-specific variables: duct angle of attack, upper crest
-location, upper crest height, and lower crest height. The default two
-generations, population of two, two CFD outer iterations, and 20 Fluent
-iterations are intended to test the complete system rather than produce a
-converged engineering optimum.
+An end-to-end evaluation requires working installations and valid licenses for
+FreeCAD, SpaceClaim, ANSYS Workbench/Meshing, and Fluent.

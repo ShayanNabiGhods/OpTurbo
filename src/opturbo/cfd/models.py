@@ -27,7 +27,7 @@ class Turbine:
 
 @dataclass
 class Blade:
-    """Radial stations and local blade geometry."""
+    """Radial stations and blade data, including actuator-disk axial thickness in metres."""
     radius: list[float]
     chord: list[float]
     twist: list[float]
