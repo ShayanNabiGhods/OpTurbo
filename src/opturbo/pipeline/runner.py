@@ -90,6 +90,8 @@ class PipelineRunner:
         self.emit("[1/4] Generating FreeCAD STEP profiles")
         settings = asdict(geometry)
         settings["parsec"] = parsec
+        if geometry.design_type == "flanged":
+            settings["flanged_curve"] = parsec["lower"]
         settings_path = output / "geometry_settings.json"
         settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         script = self.root / "src" / "opturbo" / "geometry_worker.py"

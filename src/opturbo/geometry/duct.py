@@ -8,6 +8,7 @@ from FreeCAD import Base
 from .config import DesignParameters
 from .freecad_helpers import checked
 from .parsec import coefficients, profile, surface
+from ..parsec import lower_profile
 
 
 PARSEC_DUCT = {
@@ -20,13 +21,70 @@ PARSEC_DUCT = {
 }
 
 
-def _line_intersection(first, first_direction, second, second_direction):
-    cross = first_direction.x * second_direction.y - first_direction.y * second_direction.x
-    if abs(cross) < 1e-12:
-        raise ValueError("PARSEC and flange tangents must not be parallel.")
-    delta_x, delta_y = second.x - first.x, second.y - first.y
-    distance = (delta_x * second_direction.y - delta_y * second_direction.x) / cross
-    return first + first_direction * distance
+def _edge_samples(edge):
+    """Discretize an offset edge while retaining its endpoints."""
+    return list(edge.discretize(Number=max(3, min(4000, int(edge.Length / 0.25) + 3))))
+
+
+def _join_edge_route(edges, indices, start_cap, end_cap):
+    """Combine consecutive offset edges into one filling boundary curve."""
+    route = [edges[index] for index in indices]
+    if not route:
+        raise RuntimeError("Offset boundary has an empty side between end caps.")
+    samples = _edge_samples(route[0])
+    cap_vertices = [vertex.Point for vertex in start_cap.Vertexes]
+    current = min((samples[0], samples[-1]),
+                  key=lambda point: min((point.sub(v).Length for v in cap_vertices), default=0))
+    joined = [current]
+    for edge in route:
+        points = _edge_samples(edge)
+        if points[-1].sub(current).Length < points[0].sub(current).Length:
+            points.reverse()
+        if points[0].sub(current).Length > 1e-5:
+            raise RuntimeError("Offset boundary edges are not connected in order.")
+        joined.extend(point for point in points[1:] if point.sub(joined[-1]).Length > 1e-7)
+        current = joined[-1]
+    end_vertices = [vertex.Point for vertex in end_cap.Vertexes]
+    if min((current.sub(point).Length for point in end_vertices), default=1) > 1e-5:
+        raise RuntimeError("Offset boundary does not meet its end cap.")
+    curve = Part.BSplineCurve()
+    curve.interpolate(joined)
+    return curve.toShape()
+
+
+def _surface_filled_face(document, wire, start_center, end_center, half_width):
+    """Fill the native offset boundary from its two sides and round caps."""
+    edges = list(wire.Edges)
+    cap_indices = {}
+    for label, center in (("start", start_center), ("end", end_center)):
+        candidates = []
+        for index, edge in enumerate(edges):
+            curve = edge.Curve
+            if hasattr(curve, "Center") and hasattr(curve, "Radius"):
+                distance = curve.Center.sub(center).Length
+                if distance < max(1e-5, half_width * 1e-4):
+                    candidates.append((distance, index))
+        if not candidates:
+            raise RuntimeError(f"Offset wire is missing its rounded {label} cap.")
+        cap_indices[label] = min(candidates)[1]
+    start_index, end_index = cap_indices["start"], cap_indices["end"]
+
+    def between(first, last):
+        result, index = [], (first + 1) % len(edges)
+        while index != last:
+            result.append(index)
+            index = (index + 1) % len(edges)
+        return result
+
+    side_a = _join_edge_route(edges, between(end_index, start_index), edges[end_index], edges[start_index])
+    side_b = _join_edge_route(edges, between(start_index, end_index), edges[start_index], edges[end_index])
+    boundary = document.addObject("Part::Feature", "DuctBoundary")
+    boundary.Shape = Part.Compound([side_a, edges[start_index].copy(), side_b, edges[end_index].copy()])
+    document.recompute()
+    filling = document.addObject("Surface::Filling", "DuctSurface")
+    filling.BoundaryEdges = [(boundary, f"Edge{index}") for index in range(1, 5)]
+    document.recompute()
+    return checked(filling.Shape.copy(), "Surface Filling duct face")
 
 
 def _airfoil_duct(parameters: DesignParameters):
@@ -49,46 +107,43 @@ def _airfoil_duct(parameters: DesignParameters):
 
 
 def _flanged_duct(parameters: DesignParameters):
-    """Build a lower PARSEC strip with an angled trailing flange as a face."""
-    lower = parameters.parsec["lower"]
-    x_values = [index / (parameters.duct_points - 1) for index in range(parameters.duct_points)]
-    values = [surface(x, coefficients(lower, -1.0)) for x in x_values]
+    """Build the five-term flanged contour with native FreeCAD offset/filling."""
+    x_values, values = lower_profile({"lower": parameters.flanged_curve}, parameters.duct_points)
     if parameters.duct_reverse:
         values = [-value for value in values]
-    bottom = [Base.Vector(parameters.duct_origin_x + parameters.duct_chord * x,
+    points = [Base.Vector(parameters.duct_origin_x + parameters.duct_chord * x,
                           parameters.duct_origin_r + parameters.duct_chord * y, 0)
               for x, y in zip(x_values, values)]
-    tail = bottom[-1]
+    tail = points[-1]
     angle = math.radians(parameters.duct_flange_angle_deg)
     flange_end = Base.Vector(tail.x + parameters.duct_flange_length * math.cos(angle),
                              tail.y + parameters.duct_flange_length * math.sin(angle), 0)
-    half_width = parameters.duct_thickness / 2
-    left, right = [], []
-    for index, point in enumerate(bottom):
-        tangent = bottom[min(len(bottom) - 1, index + 1)].sub(bottom[max(0, index - 1)])
-        tangent.normalize()
-        normal = Base.Vector(-tangent.y, tangent.x, 0)
-        left.append(point + normal * half_width)
-        right.append(point - normal * half_width)
-    lower_tangent = bottom[-1].sub(bottom[-2]); lower_tangent.normalize()
-    flange_tangent = flange_end.sub(tail); flange_tangent.normalize()
-    lower_normal = Base.Vector(-lower_tangent.y, lower_tangent.x, 0)
-    flange_normal = Base.Vector(-flange_tangent.y, flange_tangent.x, 0)
-    left_miter = _line_intersection(tail + lower_normal * half_width, lower_tangent,
-                                    tail + flange_normal * half_width, flange_tangent)
-    right_miter = _line_intersection(tail - lower_normal * half_width, lower_tangent,
-                                     tail - flange_normal * half_width, flange_tangent)
-    left[-1], right[-1] = left_miter, right_miter
-    left_end = flange_end + flange_normal * half_width
-    right_end = flange_end - flange_normal * half_width
-    left_curve, right_curve = Part.BSplineCurve(), Part.BSplineCurve()
-    left_curve.interpolate(left)
-    right_curve.interpolate(list(reversed(right)))
-    wire = Part.Wire([left_curve.toShape(), Part.LineSegment(left_miter, left_end).toShape(),
-                      Part.LineSegment(left_end, right_end).toShape(),
-                      Part.LineSegment(right_end, right_miter).toShape(), right_curve.toShape(),
-                      Part.LineSegment(right[0], left[0]).toShape()])
-    return checked(Part.Face(wire), "PARSEC flange face")
+    curve = Part.BSplineCurve()
+    curve.interpolate(points)
+    path = Part.Wire([curve.toShape(), Part.LineSegment(tail, flange_end).toShape()])
+
+    import FreeCAD as App
+    document = App.newDocument("temporary_duct_offset")
+    try:
+        source = document.addObject("Part::Feature", "DuctCenterPath")
+        source.Shape = path
+        offset = document.addObject("Part::Offset2D", "DuctOffset")
+        offset.Source = source
+        offset.Value = parameters.duct_thickness / 2
+        offset.Mode = 1
+        offset.Join = 0
+        offset.Fill = False
+        document.recompute()
+        if offset.Shape.isNull() or not offset.Shape.isValid():
+            raise RuntimeError("FreeCAD could not create the arc offset wire.")
+        outline = offset.Shape.Wires[0].copy()
+        document.removeObject(offset.Name)
+        document.removeObject(source.Name)
+        result = _surface_filled_face(document, outline, points[0], flange_end,
+                                      parameters.duct_thickness / 2)
+    finally:
+        App.closeDocument(document.Name)
+    return result
 
 
 def duct(parameters: DesignParameters):

@@ -77,12 +77,25 @@ def profile(parameters: dict[str, dict[str, float]], points: int = 180) -> tuple
 
 
 def lower_profile(parameters: dict[str, dict[str, float]], points: int = 180) -> tuple[list[float], list[float]]:
-    """Return normalized coordinates for the lower PARSEC surface only."""
+    """Return normalized coordinates for the five-term flanged contour."""
     if points < 10:
         raise ValueError("At least 10 duct points are required.")
-    lower_coefficients = coefficients(parameters["lower"], -1.0)
+    side = parameters["lower"]
+    powers = [index + 1 for index in range(5)]
+    x_crest = side["crest_location"]
+    slope = math.tan(math.radians(side["trailing_edge_slope_deg"]))
+    matrix = [
+        [1.0 for _ in powers],
+        [float(power) for power in powers],
+        [x_crest ** power for power in powers],
+        [power * x_crest ** (power - 1) for power in powers],
+        [power * (power - 1) * x_crest ** (power - 2) for power in powers],
+    ]
+    lower_coefficients = _solve(matrix, [side["trailing_edge_height"], slope,
+                                         side["crest_height"], 0.0,
+                                         side["crest_curvature"]])
     x_values = [index / (points - 1) for index in range(points)]
-    return x_values, [sum(value * x ** (index + 0.5) for index, value in enumerate(lower_coefficients))
+    return x_values, [sum(value * x ** (index + 1) for index, value in enumerate(lower_coefficients))
                       for x in x_values]
 
 
@@ -101,10 +114,8 @@ def validate_profile(parameters: dict[str, dict[str, float]]) -> None:
 
 
 def validate_lower_profile(parameters: dict[str, dict[str, float]]) -> None:
-    """Validate the single PARSEC surface used by the flanged duct."""
+    """Validate the five-parameter polynomial contour used by flanged mode."""
     values = parameters["lower"]
-    if values["leading_edge_radius"] <= 0:
-        raise ValueError("lower leading-edge radius must be positive.")
     if not 0 < values["crest_location"] < 1:
         raise ValueError("lower crest location must lie between 0 and 1.")
     lower_profile(parameters, 120)

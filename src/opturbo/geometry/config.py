@@ -40,6 +40,11 @@ class DesignParameters:
                   "crest_height": -0.11, "crest_curvature": 1.64354,
                   "trailing_edge_height": 0.0, "trailing_edge_slope_deg": 0.148211},
     })
+    flanged_curve: dict = field(default_factory=lambda: {
+        "crest_location": 0.27530, "crest_height": -0.0847,
+        "crest_curvature": 2.5944, "trailing_edge_height": 0.002,
+        "trailing_edge_slope_deg": -5.335,
+    })
 
 
 OUTPUT_NAMES = {

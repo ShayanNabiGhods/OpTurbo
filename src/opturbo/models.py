@@ -179,18 +179,25 @@ def default_airfoil_variables() -> list[VariableSpec]:
 
 
 def default_flanged_variables() -> list[VariableSpec]:
-    """Return variables for the lower-PARSEC duct with a trailing flange."""
+    """Return variables for the five-term lower contour with a flange."""
     geometry = [
         VariableSpec("geometry.duct_chord", "Duct chord length (mm)",
-                     100.0, 60.0, 240.0, False),
+                     90.0, 60.0, 240.0, False),
         VariableSpec("geometry.duct_thickness", "Duct wall thickness (mm)",
                      2.0, 0.5, 10.0, False),
         VariableSpec("geometry.duct_flange_length", "Flange length (mm)",
-                     300.0, 100.0, 600.0, False),
+                     73.22, 20.0, 600.0, False),
         VariableSpec("geometry.duct_flange_angle_deg", "Flange angle (deg)",
-                     85.0, 45.0, 130.0, False),
+                     83.83, 45.0, 130.0, False),
     ]
-    return geometry + [spec for spec in default_parsec_variables() if spec.key.startswith("lower.")]
+    curve = [
+        VariableSpec("lower.crest_location", "Crest location", 0.27530, 0.05, 0.95),
+        VariableSpec("lower.crest_height", "Crest height", -0.0847, -0.30, 0.10),
+        VariableSpec("lower.crest_curvature", "Crest curvature", 2.5944, -10.0, 10.0),
+        VariableSpec("lower.trailing_edge_height", "Trailing-edge height", 0.002, -0.10, 0.10),
+        VariableSpec("lower.trailing_edge_slope_deg", "Trailing-edge slope (deg)", -5.335, -45.0, 45.0),
+    ]
+    return geometry + curve
 
 
 def default_design_variables(design_type: str = "airfoil") -> list[VariableSpec]:

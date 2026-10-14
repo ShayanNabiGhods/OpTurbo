@@ -155,7 +155,7 @@ FIELD_HELP = {
     "hub_origin_r": "r-coordinate of the hub centre; normally the axis, 0 mm.",
     "duct_origin_x": "x-coordinate of the duct leading edge in millimetres.",
     "duct_origin_r": "r-coordinate of the duct leading edge in millimetres.",
-    "duct_reverse": "Mirrors the PARSEC surface about its reference line before geometry is created.",
+    "duct_reverse": "Mirrors the duct contour about its reference line before geometry is created.",
     "duct_points": "Number of spline samples used to construct the duct; higher values make a smoother curve.",
     "global_size_cm": "Default mesh element size away from locally refined regions, in centimetres.",
     "growth_rate": "Controls the rate at which element sizes grow away from refined regions.",
@@ -1200,7 +1200,7 @@ class OpTurboApp(tk.Tk):
         return top, bottom
 
     def _flanged_duct_points(self, geometry: GeometrySettings, x_values: list[float], lower: list[float]) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
-        """Mirror the FreeCAD lower-PARSEC/flange construction for the preview."""
+        """Mirror the FreeCAD five-term contour/flange construction for preview."""
         import math
         if geometry.duct_reverse:
             lower = [-value for value in lower]
@@ -1227,7 +1227,7 @@ class OpTurboApp(tk.Tk):
         def intersect(point: tuple[float, float], direction: tuple[float, float], other: tuple[float, float], other_direction: tuple[float, float]) -> tuple[float, float]:
             cross = direction[0] * other_direction[1] - direction[1] * other_direction[0]
             if abs(cross) < 1e-12:
-                raise ValueError("PARSEC and flange tangents must not be parallel.")
+                raise ValueError("Contour and flange tangents must not be parallel.")
             dx, dy = other[0] - point[0], other[1] - point[1]
             scale = (dx * other_direction[1] - dy * other_direction[0]) / cross
             return point[0] + direction[0] * scale, point[1] + direction[1] * scale
