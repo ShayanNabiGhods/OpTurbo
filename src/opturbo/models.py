@@ -28,9 +28,9 @@ class ToolPaths:
     """External executable paths and the immutable SpaceClaim handoff path."""
 
     freecad: str = r"C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe"
-    spaceclaim: str = r"C:\Program Files\ANSYS Inc\v242\scdm\SpaceClaim.exe"
-    workbench: str = r"C:\Program Files\ANSYS Inc\v242\Framework\bin\Win64\RunWB2.exe"
-    fluent: str = r"C:\Program Files\ANSYS Inc\v242\fluent\ntbin\win64\fluent.exe"
+    spaceclaim: str = r"C:\Program Files\ANSYS Inc\v241\scdm\SpaceClaim.exe"
+    workbench: str = r"C:\Program Files\ANSYS Inc\v241\Framework\bin\Win64\RunWB2.exe"
+    fluent: str = r"C:\Program Files\ANSYS Inc\v241\fluent\ntbin\win64\fluent.exe"
     handoff_dir: str = r"C:\OpTurbo\Temp Files"
 
 
@@ -48,20 +48,20 @@ class GeometrySettings:
     resolution_origin_r: float = 0.0
     actuator_radial_span: float = 405.0
     actuator_thickness: float = 5.0
-    actuator_origin_x: float = -2.5
+    actuator_origin_x: float = 2.5
     hub_length: float = 800.0
     hub_radius: float = 45.0
     hub_origin_x: float = 335.0
     hub_origin_r: float = 0.0
-    duct_origin_x: float = -72.0
-    duct_origin_r: float = 475.0
-    design_type: str = "airfoil"
-    duct_chord: float = 200.0
-    duct_thickness: float = 2.0
+    duct_origin_x: float = -24.5
+    duct_origin_r: float = 469.5
+    design_type: str = "flanged"
+    duct_chord: float = 90.0
+    duct_thickness: float = 1.0
     duct_angle_deg: float = 0.0
-    duct_flange_length: float = 300.0
+    duct_flange_length: float = 90.0
     duct_flange_angle_deg: float = 85.0
-    duct_reverse: bool = True
+    duct_reverse: bool = False
     duct_points: int = 180
 
 
@@ -69,14 +69,14 @@ class GeometrySettings:
 class MeshSettings:
     """Important ANSYS Meshing sizes in centimetres."""
 
-    global_size_cm: float = 5.0
+    global_size_cm: float = 3.0
     growth_rate: float = 1.1
-    cpu_cores: int | None = 4
+    cpu_cores: int | None = None
     method: str = "Quad"
-    curvature_angle_deg: float = 6.0
-    resolution_size_cm: float = 0.5
+    curvature_angle_deg: float = 5.0
+    resolution_size_cm: float = 1.0
     duct_size_cm: float = 0.3
-    hub_size_cm: float = 0.5
+    hub_size_cm: float = 0.3
     inflation_layers: int = 5
     inflation_max_thickness_cm: float = 0.2
 
@@ -91,43 +91,43 @@ class CfdSettings:
     rotor_radius_m: float = 0.45
     hub_radius_m: float = 0.045
     blades: int = 3
-    omega_rad_s: float = 133.33333333333331
+    omega_rad_s: float = 133.33
     pitch_deg: float = 0.0
-    tip_loss_model: str = "prandtl"
+    tip_loss_model: str = "bontempo2025"
     bontempo_g_a: float = -0.229
     bontempo_g_b: float = 22.0116
     bontempo_g_c: float = 0.4427
     stations: int = 36
     max_outer_iterations: int = 15
-    fluent_iterations: int = 200
+    fluent_iterations: int = 300
     tolerance: float = 1e-3
-    relaxation: float = 0.3
-    processors: int = 4
+    relaxation: float = 0.7
+    processors: int = 12
     keep_iteration_data: bool = True
-    viscous_model: str = "k_omega"
-    residual_continuity: float = 1e-4
-    residual_x_velocity: float = 1e-4
-    residual_y_velocity: float = 1e-4
-    residual_swirl: float = 1e-4
-    residual_k: float = 1e-4
-    residual_epsilon: float = 1e-4
+    viscous_model: str = "k_epsilon"
+    residual_continuity: float = 1e-5
+    residual_x_velocity: float = 1e-5
+    residual_y_velocity: float = 1e-5
+    residual_swirl: float = 1e-5
+    residual_k: float = 1e-5
+    residual_epsilon: float = 1e-5
     residual_omega: float = 1e-4
     residual_nut: float = 1e-4
-    pressure_scheme: str = "second_order"
-    momentum_scheme: str = "second_order_upwind"
-    swirl_scheme: str = "second_order_upwind"
-    k_scheme: str = "second_order_upwind"
-    epsilon_scheme: str = "second_order_upwind"
+    pressure_scheme: str = "presto"
+    momentum_scheme: str = "quick"
+    swirl_scheme: str = "quick"
+    k_scheme: str = "quick"
+    epsilon_scheme: str = "quick"
     omega_scheme: str = "second_order_upwind"
     nut_scheme: str = "second_order_upwind"
-    pressure_velocity_coupling: str = "piso"
+    pressure_velocity_coupling: str = "coupled"
 
 
 @dataclass
 class GaSettings:
     """Genetic-algorithm controls."""
 
-    population_size: int = 12
+    population_size: int = 8
     generations: int = 10
     elite_count: int = 2
     tournament_size: int = 3
@@ -136,6 +136,7 @@ class GaSettings:
     mutation_scale: float = 0.10
     random_seed: int = 42
     overlap_preparation: bool = False
+    objective: str = "cp"
 
 
 @dataclass
@@ -146,6 +147,8 @@ class AccessibilitySettings:
     text_scale: int = 100
     high_contrast: bool = False
     accent_color: str = "#2f6fed"
+    candidate_marker_size: int = 5
+    outer_marker_size: int = 5
 
 
 def default_parsec_variables() -> list[VariableSpec]:
@@ -184,18 +187,18 @@ def default_flanged_variables() -> list[VariableSpec]:
         VariableSpec("geometry.duct_chord", "Duct chord length (mm)",
                      90.0, 60.0, 240.0, False),
         VariableSpec("geometry.duct_thickness", "Duct wall thickness (mm)",
-                     2.0, 0.5, 10.0, False),
+                     1.0, 0.5, 10.0, False),
         VariableSpec("geometry.duct_flange_length", "Flange length (mm)",
-                     73.22, 20.0, 600.0, False),
+                     90.0, 60.0, 120.0, False),
         VariableSpec("geometry.duct_flange_angle_deg", "Flange angle (deg)",
-                     83.83, 45.0, 130.0, False),
+                     85.0, 80.0, 90.0, True),
     ]
     curve = [
-        VariableSpec("lower.crest_location", "Crest location", 0.27530, 0.05, 0.95),
-        VariableSpec("lower.crest_height", "Crest height", -0.0847, -0.30, 0.10),
-        VariableSpec("lower.crest_curvature", "Crest curvature", 2.5944, -10.0, 10.0),
-        VariableSpec("lower.trailing_edge_height", "Trailing-edge height", 0.002, -0.10, 0.10),
-        VariableSpec("lower.trailing_edge_slope_deg", "Trailing-edge slope (deg)", -5.335, -45.0, 45.0),
+        VariableSpec("lower.crest_location", "Crest location", 0.3, 0.25, 0.35),
+        VariableSpec("lower.crest_height", "Crest height", -0.15, -0.175, -0.125),
+        VariableSpec("lower.crest_curvature", "Crest curvature", 2.0, 0.5, 3.0),
+        VariableSpec("lower.trailing_edge_height", "Trailing-edge height", 0.1, 0.0, 0.3),
+        VariableSpec("lower.trailing_edge_slope_deg", "Trailing-edge slope (deg)", 0.0, -20.0, 20.0),
     ]
     return geometry + curve
 
@@ -221,7 +224,8 @@ class ProjectConfig:
     cfd: CfdSettings = field(default_factory=CfdSettings)
     ga: GaSettings = field(default_factory=GaSettings)
     accessibility: AccessibilitySettings = field(default_factory=AccessibilitySettings)
-    design_variables: list[VariableSpec] = field(default_factory=default_design_variables)
+    design_variables: list[VariableSpec] = field(
+        default_factory=lambda: default_design_variables("flanged"))
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the configuration into JSON-compatible values."""
@@ -230,7 +234,10 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectConfig":
         """Rebuild a configuration loaded from JSON."""
-        geometry_data = data.get("geometry", {})
+        geometry_data = dict(data.get("geometry", {}))
+        # Saved projects created before duct-family selection were airfoil-based.
+        if "design_type" not in geometry_data:
+            geometry_data["design_type"] = "airfoil"
         geometry = GeometrySettings(**geometry_data)
         raw_variables = data.get("design_variables", data.get("parsec_variables", []))
         variables = [VariableSpec(**item) for item in raw_variables]

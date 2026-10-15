@@ -28,9 +28,11 @@ from .models import (
     default_design_variables,
 )
 from .optimizer import GeneticAlgorithm
+from .objectives import OBJECTIVES, objective_value
 from .parsec import lower_profile, nested_parameters, profile, validate_lower_profile, validate_profile
 from .pipeline import PipelineRunner
 from .pipeline.overlap import evaluate_generation
+from .pipeline.failures import failed_candidate
 from .preview import actuator_outline, hub_outline, outer_domain_outline, resolution_outline
 from .storage import ProjectStore, atomic_json
 
@@ -123,12 +125,14 @@ LABELS = {
     "mutation_rate": "Mutation probability",
     "mutation_scale": "Mutation scale (fraction of range)",
     "random_seed": "Random seed",
+    "objective": "Optimization criterion",
     "overlap_preparation": "Overlap meshing with Fluent (experimental)",
 }
 
 
 FIELD_HELP = {
     "overlap_preparation": "Prepare one next candidate through meshing while the current candidate runs Fluent. Same generation only. Stop waits for both active jobs; a prepared mesh is retained. Uses extra RAM and may require concurrent ANSYS licenses.",
+    "objective": "Maximize Cp, Ct, or their flange-tip normalized values. Normalized values use the duct maximum radius, calculated from the selected candidate geometry.",
     "tip_loss_model": "prandtl: original tip and root factors. bontempo2025: duct-calibrated tip factor from page 5, Eq. (6), multiplied by the Prandtl root-loss factor.",
     "bontempo_g_a": "A in g = exp(A × (blade count × tip-speed ratio − B)) + C. Default: −0.229.",
     "bontempo_g_b": "Coefficient B in g = exp(A × (blade count × tip-speed ratio − B)) + C. Default: 22.0116.",
@@ -289,11 +293,14 @@ class LinePlot(tk.Canvas):
     COLORS = ("#2f6fed", "#e05d44", "#1a9c68", "#9b59b6")
 
     def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str,
-                 log_ticks: bool = False, y_step: float | None = None, **kwargs):
+                 log_ticks: bool = False, y_step: float | None = None,
+                 smooth: bool = True, markers: bool = False, scatter: bool = False,
+                 marker_size: int = 5, **kwargs):
         super().__init__(parent, background="white", highlightthickness=1,
                          highlightbackground="#c8ccd2", **kwargs)
         self.title, self.x_label, self.y_label = title, x_label, y_label
         self.log_ticks, self.y_step = log_ticks, y_step
+        self.smooth, self.markers, self.scatter, self.marker_size = smooth, markers, scatter, marker_size
         self.series: list[tuple[str, list[float]]] = []
         self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
         self.bind("<Configure>", lambda _event: self.redraw())
@@ -358,13 +365,24 @@ class LinePlot(tk.Canvas):
                 x = left + index * (right - left) / (x_max - 1)
                 y = bottom - (value - low) * (bottom - top) / (high - low)
                 coordinates.extend((x, y))
-            if len(coordinates) >= 4:
-                self.create_line(*coordinates, fill=color, width=2, smooth=True)
-            elif coordinates:
+            if len(coordinates) >= 4 and not self.scatter:
+                self.create_line(*coordinates, fill=color, width=2, smooth=self.smooth)
+            if self.markers:
+                radius = max(1, self.marker_size) / 2
+                for point in range(0, len(coordinates), 2):
+                    self.create_oval(coordinates[point] - radius, coordinates[point + 1] - radius,
+                                     coordinates[point] + radius, coordinates[point + 1] + radius,
+                                     fill=color, outline=color)
+            elif len(coordinates) == 2:
                 self.create_oval(coordinates[0] - 2, coordinates[1] - 2,
                                  coordinates[0] + 2, coordinates[1] + 2, fill=color)
             legend_x = right - 90 * (len(self.series) - series_index)
-            self.create_line(legend_x, 17, legend_x + 18, 17, fill=color, width=3)
+            if self.scatter:
+                radius = max(1, self.marker_size) / 2
+                self.create_oval(legend_x + 9 - radius, 17 - radius, legend_x + 9 + radius,
+                                 17 + radius, fill=color, outline=color)
+            else:
+                self.create_line(legend_x, 17, legend_x + 18, 17, fill=color, width=3)
             self.create_text(legend_x + 23, 17, text=name, anchor="w", font=("Segoe UI", 8), fill=self.palette["text"])
 
 
@@ -387,7 +405,7 @@ class OpTurboApp(tk.Tk):
         self.worker: threading.Thread | None = None
         self.history: list[dict] = []
         self.history_lock = threading.Lock()
-        self.best_cp = float("-inf")
+        self.best_fitness = float("-inf")
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
         self.bontempo_controls: list[ttk.Widget] = []
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
@@ -442,7 +460,9 @@ class OpTurboApp(tk.Tk):
     def _apply_accessibility(self, _event: object | None = None) -> None:
         """Apply appearance preferences immediately without restarting the app."""
         settings = AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
-                                         high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get())
+                                         high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get(),
+                                         candidate_marker_size=int(self.candidate_marker_size_var.get()),
+                                         outer_marker_size=int(self.outer_marker_size_var.get()))
         self.palette = self._theme_palette(settings)
         self.config_model.accessibility = settings
         self._configure_style()
@@ -452,6 +472,12 @@ class OpTurboApp(tk.Tk):
         for plot in (getattr(self, name, None) for name in ("performance_plot", "bem_plot", "residual_plot", "outer_plot")):
             if plot:
                 plot.set_palette({key: self.palette[key] for key in ("canvas", "text", "muted", "grid", "axis")})
+        if getattr(self, "performance_plot", None):
+            self.performance_plot.marker_size = settings.candidate_marker_size
+            self.performance_plot.redraw()
+        if getattr(self, "outer_plot", None):
+            self.outer_plot.marker_size = settings.outer_marker_size
+            self.outer_plot.redraw()
         if hasattr(self, "log_text"):
             self.log_text.configure(background=self.palette["canvas"], foreground=self.palette["text"],
                                     insertbackground=self.palette["text"])
@@ -699,7 +725,8 @@ class OpTurboApp(tk.Tk):
             self.results_tree.heading(name, text=name.replace("_", " ").title())
             self.results_tree.column(name, width=width, anchor="center")
         self.results_tree.pack(fill="both", expand=True)
-        self.best_var = tk.StringVar(value="Best Cp: —")
+        self.best_var = tk.StringVar(
+            value=f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         ttk.Label(results, textvariable=self.best_var, style="Title.TLabel").pack(anchor="w", pady=10)
 
     def _build_monitor_tab(self) -> None:
@@ -729,13 +756,15 @@ class OpTurboApp(tk.Tk):
         xscroll.grid(row=1, column=0, sticky="ew")
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
-        self.performance_plot = LinePlot(performance, "Optimization objective history", "Evaluation (-)", "Cp / Ct (-)", height=260)
+        self.performance_plot = LinePlot(performance, "Optimization objective history", "Evaluation (-)", "Cp / Ct (-)",
+                                         markers=True, scatter=True, height=260)
         self.performance_plot.pack(fill="both", expand=True)
         self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)", height=260)
         self.bem_plot.pack(fill="both", expand=True)
         self.residual_plot = LinePlot(residual, "Current Fluent run", "Solver iteration sample (-)", "Residual (-)", log_ticks=True)
         self.residual_plot.pack(fill="both", expand=True)
-        self.outer_plot = LinePlot(outer, "Current candidate coupling", "Outer iteration (-)", "Cp / Ct (-)", y_step=0.1)
+        self.outer_plot = LinePlot(outer, "Current candidate coupling", "Outer iteration (-)", "Cp / Ct (-)",
+                                   y_step=0.1, markers=True, smooth=False)
         self.outer_plot.pack(fill="both", expand=True)
 
     def _build_accessibility_tab(self) -> None:
@@ -751,6 +780,8 @@ class OpTurboApp(tk.Tk):
         self.text_scale_var = tk.StringVar(value="100")
         self.high_contrast_var = tk.BooleanVar(value=False)
         self.accent_var = tk.StringVar(value="#2f6fed")
+        self.candidate_marker_size_var = tk.StringVar(value="5")
+        self.outer_marker_size_var = tk.StringVar(value="5")
         ttk.Label(panel, text="Theme").grid(row=2, column=0, sticky="w", pady=5)
         theme = ttk.Combobox(panel, textvariable=self.theme_var, values=("light", "dark"), state="readonly", width=14)
         theme.grid(row=2, column=1, sticky="w", pady=5)
@@ -777,6 +808,18 @@ class OpTurboApp(tk.Tk):
         accent.grid(row=10, column=1, sticky="w")
         accent.bind("<<ComboboxSelected>>", self._apply_accessibility)
         ttk.Label(panel, text="Accent highlights selected tabs, primary actions and progress. High contrast overrides it.", style="Subtitle.TLabel").grid(row=11, column=0, columnspan=2, sticky="w")
+        ttk.Label(panel, text="Candidate marker size").grid(row=12, column=0, sticky="w", pady=(12, 5))
+        candidate_markers = ttk.Combobox(panel, textvariable=self.candidate_marker_size_var,
+                                         values=tuple(str(size) for size in range(2, 13)), state="readonly", width=14)
+        candidate_markers.grid(row=12, column=1, sticky="w", pady=(12, 5))
+        ttk.Label(panel, text="Marker size for candidate results in the Candidates panel.", style="Subtitle.TLabel").grid(row=13, column=1, sticky="w")
+        ttk.Label(panel, text="Outer Cp / Ct marker size").grid(row=14, column=0, sticky="w", pady=(8, 5))
+        outer_markers = ttk.Combobox(panel, textvariable=self.outer_marker_size_var,
+                                     values=tuple(str(size) for size in range(2, 13)), state="readonly", width=14)
+        outer_markers.grid(row=14, column=1, sticky="w", pady=(8, 5))
+        ttk.Label(panel, text="Marker size for the Outer Cp / Ct panel.", style="Subtitle.TLabel").grid(row=15, column=1, sticky="w")
+        candidate_markers.bind("<<ComboboxSelected>>", self._apply_accessibility)
+        outer_markers.bind("<<ComboboxSelected>>", self._apply_accessibility)
 
     def _add_dataclass_form(self, parent: ttk.Frame, section: str, cls: type,
                             browse_paths: bool = False, exclude: set[str] | None = None,
@@ -808,6 +851,9 @@ class OpTurboApp(tk.Tk):
             if section == "cfd" and item.name == "tip_loss_model":
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=("prandtl", "bontempo2025"))
+            elif section == "ga" and item.name == "objective":
+                widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
+                                      values=tuple(OBJECTIVES))
             elif section == "cfd" and item.name in CFD_CHOICE_VALUES:
                 widget = ttk.Combobox(parent, textvariable=variable, state="readonly",
                                       values=CFD_CHOICE_VALUES[item.name])
@@ -903,6 +949,10 @@ class OpTurboApp(tk.Tk):
         self.text_scale_var.set(str(self.config_model.accessibility.text_scale))
         self.high_contrast_var.set(self.config_model.accessibility.high_contrast)
         self.accent_var.set(self.config_model.accessibility.accent_color)
+        self.candidate_marker_size_var.set(str(self.config_model.accessibility.candidate_marker_size))
+        self.outer_marker_size_var.set(str(self.config_model.accessibility.outer_marker_size))
+        if hasattr(self, "best_var"):
+            self.best_var.set(f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         self.design_variable_sets = {self.config_model.geometry.design_type: self.config_model.design_variables[:]}
         self._make_parsec_rows()
         self._apply_accessibility()
@@ -941,13 +991,12 @@ class OpTurboApp(tk.Tk):
             for item in fields(cls):
                 raw = self.field_vars[(section, item.name)].get()
                 default = getattr(instance, item.name)
-                if isinstance(default, bool):
+                if section == "mesh" and item.name == "cpu_cores":
+                    values[item.name] = None if raw == "Program Controlled" else int(raw)
+                elif isinstance(default, bool):
                     values[item.name] = bool(raw)
                 elif isinstance(default, int):
-                    if section == "mesh" and item.name == "cpu_cores":
-                        values[item.name] = None if raw == "Program Controlled" else int(raw)
-                    else:
-                        values[item.name] = int(raw)
+                    values[item.name] = int(raw)
                 elif isinstance(default, float):
                     values[item.name] = float(raw)
                 elif section == "mesh" and item.name == "method":
@@ -971,7 +1020,9 @@ class OpTurboApp(tk.Tk):
             geometry=build("geometry", GeometrySettings), mesh=build("mesh", MeshSettings),
             cfd=build("cfd", CfdSettings), ga=build("ga", GaSettings),
             accessibility=AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
-                                                high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get()), design_variables=variables,
+                                                high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get(),
+                                                candidate_marker_size=int(self.candidate_marker_size_var.get()),
+                                                outer_marker_size=int(self.outer_marker_size_var.get())), design_variables=variables,
         )
         geometry_values = {
             item.key.split(".", 1)[1]: item.value
@@ -983,6 +1034,8 @@ class OpTurboApp(tk.Tk):
         else:
             validate_profile(nested_parameters(variables))
         self._validate_positive_settings(model)
+        if model.ga.objective not in OBJECTIVES:
+            raise ValueError("Choose Cp, Ct, normalized Cp, or normalized Ct as the optimization criterion.")
         return model
 
     @staticmethod
@@ -1063,10 +1116,14 @@ class OpTurboApp(tk.Tk):
             return False
         try:
             model = self._read_model_from_fields()
+            previous_objective = self.config_model.ga.objective
             if not model.save_dir:
                 self._choose_project_folder()
                 return bool(self.save_dir_var.get())
             self.config_model = model
+            if previous_objective != model.ga.objective:
+                self.best_fitness = float("-inf")
+                self.best_var.set(f"Best {OBJECTIVES[model.ga.objective]}: —")
             self.store = ProjectStore(Path(model.save_dir))
             self.store.initialize(model)
             self._update_resume_button()
@@ -1102,7 +1159,7 @@ class OpTurboApp(tk.Tk):
         self.config_model = ProjectConfig()
         self.store = None
         self.history.clear()
-        self.best_cp = float("-inf")
+        self.best_fitness = float("-inf")
         self._update_resume_button()
         self._load_model_into_fields()
         self._refresh_results()
@@ -1430,7 +1487,8 @@ class OpTurboApp(tk.Tk):
             self.events.put(("candidate", {"generation": 0, "candidate": 1, "genome": genome}))
             result = self._runner().evaluate(self.config_model, genome, candidate)
             event = {"evaluation": len(self.history) + 1, "generation": 0, "candidate": 1,
-                     "fitness": result["cp"], "genome": genome, **result}
+                     "fitness": objective_value(result, self.config_model.ga.objective),
+                     "objective": self.config_model.ga.objective, "genome": genome, **result}
             self.events.put(("result", event))
             self.events.put(("done", "Current design evaluation completed"))
         except Exception as error:
@@ -1476,13 +1534,11 @@ class OpTurboApp(tk.Tk):
                                                "genome": genome.copy()}))
                 try:
                     result = runner.evaluate(config, genome, folder)
-                    return result["cp"], result
+                    return objective_value(result, config.ga.objective), result
                 except Exception as error:
-                    failure = {"cp": -1e30, "ct": float("nan"), "status": "failed",
-                               "error": str(error), "candidate_dir": str(folder)}
-                    (folder / "failure.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
-                    self.events.put(("log", f"Candidate failed and received a penalty: {error}"))
-                    return failure["cp"], failure
+                    failure = failed_candidate(folder, error, config.ga.objective)
+                    self.events.put(("log", f"{folder.name}: {failure['status']}; candidate skipped with penalty: {error}"))
+                    return failure["fitness"], failure
 
             def generation_evaluator(candidates, generation):
                 return evaluate_generation(runner, config, candidates, generation, store.candidate_dir,
@@ -1504,6 +1560,9 @@ class OpTurboApp(tk.Tk):
                                  should_stop=self.stop_requested.is_set,
                                  evaluate_generation=generation_evaluator if config.ga.overlap_preparation else None,
                                  resume_results=resume_results)
+            if (not self.stop_requested.is_set() and best.result
+                    and best.result.get("status") in {"failed", "skipped_fluent_crash"}):
+                raise RuntimeError("Every candidate failed; optimization ran through the configured candidates but found no valid result.")
             run_status = "stopped" if self.stop_requested.is_set() else "finished"
             state_data = store.load_optimization_state() or {}
             state_data.update({
@@ -1513,7 +1572,8 @@ class OpTurboApp(tk.Tk):
                 "completed_candidates": len(resume_results),
             })
             store.save_optimization_state(state_data)
-            self.events.put(("done", f"Optimization {run_status}. Best Cp = {best.fitness:.6g}"))
+            label = OBJECTIVES[config.ga.objective]
+            self.events.put(("done", f"Optimization {run_status}. Best {label} = {best.fitness:.6g}"))
         except Exception as error:
             if store is not None and state is not None:
                 state["status"] = "interrupted"
@@ -1603,19 +1663,25 @@ class OpTurboApp(tk.Tk):
                 self.history.append(event)
             if self.store:
                 self.store.save_history(self.history)
-        cp = float(event.get("cp", event.get("fitness", float("nan"))))
-        ct = float(event.get("ct", float("nan")))
+        cp = float(event.get("cp", float("nan")))
+        ct_value = event.get("ct")
+        ct = float(ct_value) if ct_value is not None else float("nan")
         status = event.get("status", "completed")
         self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
-                                 event.get("candidate"), f"{cp:.7g}", f"{ct:.7g}", status))
+                                 event.get("candidate"), f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
+                                 f"{ct:.7g}" if math.isfinite(ct) else "—", status))
         with self.history_lock:
             progress_value = (sum(1 for row in self.history
                                   if row.get("optimization_id") == event.get("optimization_id"))
                               if event.get("optimization_id") else len(self.history))
         self.progress.configure(value=progress_value)
-        if cp > self.best_cp:
-            self.best_cp = cp
-            self.best_var.set(f"Best Cp: {cp:.7g}    Ct: {ct:.7g}")
+        fitness = float(event.get("fitness", cp))
+        objective = str(event.get("objective", "cp"))
+        if (status == "completed" and objective == self.config_model.ga.objective
+                and fitness > self.best_fitness):
+            self.best_fitness = fitness
+            label = OBJECTIVES.get(objective, "objective")
+            self.best_var.set(f"Best {label}: {fitness:.7g}    Cp: {cp:.7g}    Ct: {ct:.7g}")
             if self.store:
                 atomic_json(self.store.root / "best" / "best_result.json", event)
         self._refresh_plots(event)
@@ -1640,15 +1706,24 @@ class OpTurboApp(tk.Tk):
     def _refresh_results(self) -> None:
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
-        self.best_cp = float("-inf")
+        self.best_fitness = float("-inf")
         for event in self.history:
-            cp = float(event.get("cp", event.get("fitness", float("-inf"))))
-            ct = float(event.get("ct", float("nan")))
+            cp = float(event.get("cp", float("nan")))
+            ct_value = event.get("ct")
+            ct = float(ct_value) if ct_value is not None else float("nan")
             self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
-                                     event.get("candidate"), f"{cp:.7g}", f"{ct:.7g}", event.get("status", "completed")))
-            if cp > self.best_cp:
-                self.best_cp = cp
-                self.best_var.set(f"Best Cp: {cp:.7g}    Ct: {ct:.7g}")
+                                     event.get("candidate"),
+                                     f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
+                                     f"{ct:.7g}" if math.isfinite(ct) else "—",
+                                     event.get("status", "completed")))
+            fitness = float(event.get("fitness", cp))
+            objective = str(event.get("objective", "cp"))
+            if (event.get("status", "completed") == "completed"
+                    and objective == self.config_model.ga.objective
+                    and fitness > self.best_fitness):
+                self.best_fitness = fitness
+                label = OBJECTIVES.get(objective, "objective")
+                self.best_var.set(f"Best {label}: {fitness:.7g}    Cp: {cp:.7g}    Ct: {ct:.7g}")
         self._refresh_plots(self.history[-1] if self.history else {})
 
     def _refresh_plots(self, latest: dict) -> None:

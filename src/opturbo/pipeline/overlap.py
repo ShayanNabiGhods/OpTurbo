@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from ..models import ProjectConfig
+from .failures import failed_candidate
+from ..objectives import objective_value
 from ..storage import atomic_json
 from .runner import PipelineRunner, PreparedCandidate
 
@@ -29,10 +31,8 @@ def evaluate_generation(
     """
     def failure(folder: Path, error: Exception) -> dict:
         """Persist a candidate failure and give it the standard GA penalty."""
-        result = {"cp": -1e30, "ct": float("nan"), "status": "failed",
-                  "error": str(error), "candidate_dir": str(folder)}
-        atomic_json(folder / "failure.json", result)
-        runner.emit(f"{folder.name}: candidate failed and received a penalty: {error}")
+        result = failed_candidate(folder, error, config.ga.objective)
+        runner.emit(f"{folder.name}: {result['status']}; candidate skipped with penalty: {error}")
         return result
 
     def prepare(candidate: tuple[int, dict[str, float]]) -> tuple[Path, PreparedCandidate | dict]:
@@ -71,7 +71,9 @@ def evaluate_generation(
             if position + 1 < len(candidates) and not should_stop():
                 following = executor.submit(prepare, candidates[position + 1])
             result = future.result() if future is not None else prepared
-            yield index, float(result["cp"]), result
+            fitness = (float(result["fitness"]) if "fitness" in result
+                       else objective_value(result, config.ga.objective))
+            yield index, fitness, result
             if following is None:
                 return
             # Do not submit candidate n+1 to Fluent until its full preparation

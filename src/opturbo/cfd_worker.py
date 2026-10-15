@@ -26,7 +26,7 @@ def build_config(resources, workdir, stations, max_outer=15):
         "workdir": Path(workdir),
         "fluent": os.environ.get(
             "FLUENT_EXECUTABLE",
-            r"C:\Program Files\ANSYS Inc\v242\fluent\ntbin\win64\fluent.exe",
+            r"C:\Program Files\ANSYS Inc\v241\fluent\ntbin\win64\fluent.exe",
         ),
         "max_outer": max_outer,
         "tolerance": 1e-3,

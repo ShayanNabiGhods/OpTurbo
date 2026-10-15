@@ -14,6 +14,7 @@ from typing import Callable
 
 from ..models import GeometrySettings, ProjectConfig, VariableSpec
 from ..parsec import nested_parameters, validate_lower_profile, validate_profile
+from ..objectives import objective_value
 from .process import executable_path, run_streaming, windows_path
 from ..storage import atomic_json
 
@@ -81,6 +82,26 @@ class PipelineRunner:
         result = self._cfd(prepared.config, prepared.mesh, prepared.folder / "04_cfd")
         if not math.isfinite(float(result["cp"])) or not math.isfinite(float(result["ct"])):
             raise ValueError("CFD returned a non-finite Cp or Ct.")
+        geometry = prepared.config.geometry
+        lower_te = next((item.value for item in prepared.config.design_variables
+                         if item.key == "lower.trailing_edge_height"), 0.0)
+        flange_length = geometry.duct_flange_length if geometry.design_type == "flanged" else 0.0
+        duct_y_max_mm = (
+            geometry.duct_origin_r
+            + flange_length * math.sin(math.radians(geometry.duct_flange_angle_deg))
+            + geometry.duct_chord * math.sin(math.radians(geometry.duct_angle_deg))
+            + lower_te * geometry.duct_chord
+        )
+        duct_tip_radius_m = duct_y_max_mm / 1000.0
+        rotor_radius = prepared.config.cfd.rotor_radius_m
+        if not math.isfinite(duct_tip_radius_m) or duct_tip_radius_m <= 0:
+            raise ValueError("Calculated duct-tip radius must be positive and finite.")
+        area_ratio = (rotor_radius / duct_tip_radius_m) ** 2
+        result["cp_normalized"] = float(result["cp"]) * area_ratio
+        result["ct_normalized"] = float(result["ct"]) * area_ratio
+        result["duct_tip_radius_m"] = duct_tip_radius_m
+        result["objective"] = prepared.config.ga.objective
+        result["fitness"] = objective_value(result, prepared.config.ga.objective)
         result["candidate_dir"] = str(prepared.folder)
         atomic_json(prepared.folder / "result.json", result)
         return result
@@ -133,41 +154,46 @@ class PipelineRunner:
             "HUB_RADIUS_CM = 4.5": f"HUB_RADIUS_CM = {config.geometry.hub_radius / 10.0}",
             "DOMAIN_ORIGIN_X_CM = -225.0": f"DOMAIN_ORIGIN_X_CM = {config.geometry.domain_origin_x / 10.0}",
             "DOMAIN_LENGTH_CM = 900.0": f"DOMAIN_LENGTH_CM = {config.geometry.domain_length / 10.0}",
-            "DUCT_ORIGIN_X_CM = -7.2": f"DUCT_ORIGIN_X_CM = {config.geometry.duct_origin_x / 10.0}",
-            "DUCT_ORIGIN_R_CM = 47.5": f"DUCT_ORIGIN_R_CM = {config.geometry.duct_origin_r / 10.0}",
-            "DUCT_CHORD_CM = 20.0": f"DUCT_CHORD_CM = {config.geometry.duct_chord / 10.0}",
+            "DUCT_ORIGIN_X_CM = -2.45": f"DUCT_ORIGIN_X_CM = {config.geometry.duct_origin_x / 10.0}",
+            "DUCT_ORIGIN_R_CM = 46.95": f"DUCT_ORIGIN_R_CM = {config.geometry.duct_origin_r / 10.0}",
+            "DUCT_CHORD_CM = 9.0": f"DUCT_CHORD_CM = {config.geometry.duct_chord / 10.0}",
             "DUCT_ANGLE_DEG = 0.0": f"DUCT_ANGLE_DEG = {config.geometry.duct_angle_deg}",
             "RESOLUTION_LENGTH = 270.0": f"RESOLUTION_LENGTH = {config.geometry.resolution_length / 10}",
             "RESOLUTION_INLET_RADIUS = 90.0": f"RESOLUTION_INLET_RADIUS = {config.geometry.resolution_inlet_radius / 10}",
             # Additional geometry values for flanged mode
-            "DUCT_FLANGE_LENGTH = 0": (
+            "DUCT_FLANGE_LENGTH = 9.0": (
                 f"DUCT_FLANGE_LENGTH = {config.geometry.duct_flange_length / 10.0}"
                 if config.geometry.design_type == "flanged"
                 else "DUCT_FLANGE_LENGTH = 0"
             ),
-            "DUCT_FLANGE_ANGLE_DEG = 0": (
+            "DUCT_FLANGE_ANGLE_DEG = 85.0": (
                 f"DUCT_FLANGE_ANGLE_DEG = {config.geometry.duct_flange_angle_deg}"
                 if config.geometry.design_type == "flanged"
                 else "DUCT_FLANGE_ANGLE_DEG = 0"
             ),
-            "LOWER_TRAILING_EDGE_HEIGHT = 0": (
+            "LOWER_TRAILING_EDGE_HEIGHT = 0.1": (
                 "LOWER_TRAILING_EDGE_HEIGHT = " + str(next(
                     item.value for item in config.design_variables
                     if item.key == "lower.trailing_edge_height"
                 ))
             ),
+            "DUCT_THICKNESS = 0.1": (
+                f"DUCT_THICKNESS = {config.geometry.duct_thickness / 10.0}"
+                if config.geometry.design_type == "flanged"
+                else "DUCT_THICKNESS = 0"
+            ),
             
             # Meshing sizes and properties
-            "GLOBAL_SIZE_CM = 5.0": f"GLOBAL_SIZE_CM = {config.mesh.global_size_cm}",
+            "GLOBAL_SIZE_CM = 3.0": f"GLOBAL_SIZE_CM = {config.mesh.global_size_cm}",
             "GROWTH_RATE = 1.1": f"GROWTH_RATE = {config.mesh.growth_rate}",
-            "CPU_CORES_FOR_PARALLEL_PART_MESHING = 4": (
+            "CPU_CORES_FOR_PARALLEL_PART_MESHING = None": (
                 f"CPU_CORES_FOR_PARALLEL_PART_MESHING = {config.mesh.cpu_cores}"
             ),
             'MESH_METHOD = "Quad"': f'MESH_METHOD = {config.mesh.method!r}',
-            "CURVATURE_ANGLE_DEG = 6.0": f"CURVATURE_ANGLE_DEG = {config.mesh.curvature_angle_deg}",
-            "RESOLUTION_SIZE_CM = 0.5": f"RESOLUTION_SIZE_CM = {config.mesh.resolution_size_cm}",
+            "CURVATURE_ANGLE_DEG = 5.0": f"CURVATURE_ANGLE_DEG = {config.mesh.curvature_angle_deg}",
+            "RESOLUTION_SIZE_CM = 1.0": f"RESOLUTION_SIZE_CM = {config.mesh.resolution_size_cm}",
             "DUCT_SIZE_CM = 0.3": f"DUCT_SIZE_CM = {config.mesh.duct_size_cm}",
-            "HUB_SIZE_CM = 0.5": f"HUB_SIZE_CM = {config.mesh.hub_size_cm}",
+            "HUB_SIZE_CM = 0.3": f"HUB_SIZE_CM = {config.mesh.hub_size_cm}",
             "INFLATION_LAYERS = 5": f"INFLATION_LAYERS = {config.mesh.inflation_layers}",
             "INFLATION_MAX_THICKNESS_CM = 0.2": f"INFLATION_MAX_THICKNESS_CM = {config.mesh.inflation_max_thickness_cm}",
         }

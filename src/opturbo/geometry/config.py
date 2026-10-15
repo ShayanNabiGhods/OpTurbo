@@ -17,20 +17,20 @@ class DesignParameters:
     resolution_origin_r: float = 0.0
     actuator_radial_span: float = 405.0
     actuator_thickness: float = 5.0
-    actuator_origin_x: float = -2.5
+    actuator_origin_x: float = 2.5
     hub_length: float = 800.0
     hub_radius: float = 45.0
     hub_origin_x: float = 335.0
     hub_origin_r: float = 0.0
-    duct_origin_x: float = -72.0
-    duct_origin_r: float = 475.0
-    design_type: str = "airfoil"
-    duct_chord: float = 200.0
-    duct_thickness: float = 2.0
+    duct_origin_x: float = -24.5
+    duct_origin_r: float = 469.5
+    design_type: str = "flanged"
+    duct_chord: float = 90.0
+    duct_thickness: float = 1.0
     duct_angle_deg: float = 0.0
-    duct_flange_length: float = 300.0
+    duct_flange_length: float = 90.0
     duct_flange_angle_deg: float = 85.0
-    duct_reverse: bool = True
+    duct_reverse: bool = False
     duct_points: int = 180
     parsec: dict = field(default_factory=lambda: {
         "upper": {"leading_edge_radius": 0.0162187, "crest_location": 0.376723,
@@ -41,9 +41,9 @@ class DesignParameters:
                   "trailing_edge_height": 0.0, "trailing_edge_slope_deg": 0.148211},
     })
     flanged_curve: dict = field(default_factory=lambda: {
-        "crest_location": 0.27530, "crest_height": -0.0847,
-        "crest_curvature": 2.5944, "trailing_edge_height": 0.002,
-        "trailing_edge_slope_deg": -5.335,
+        "crest_location": 0.3, "crest_height": -0.15,
+        "crest_curvature": 2.0, "trailing_edge_height": 0.1,
+        "trailing_edge_slope_deg": 0.0,
     })
 
 

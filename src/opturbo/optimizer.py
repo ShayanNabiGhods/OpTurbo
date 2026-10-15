@@ -9,6 +9,7 @@ import random
 from typing import Callable, Iterator, Mapping
 
 from .models import GaSettings, VariableSpec
+from .objectives import OBJECTIVES
 
 
 Genome = dict[str, float]
@@ -33,6 +34,8 @@ class GeneticAlgorithm:
         self.variables = [variable for variable in variables if variable.optimize]
         self.settings = settings
         self.random = random.Random(settings.random_seed)
+        if settings.objective not in OBJECTIVES:
+            raise ValueError(f"Unknown optimization objective: {settings.objective}")
         if not self.variables:
             raise ValueError("Select at least one design variable for optimization.")
         if settings.population_size < 2:

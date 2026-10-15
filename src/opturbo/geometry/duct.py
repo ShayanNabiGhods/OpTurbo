@@ -23,25 +23,52 @@ PARSEC_DUCT = {
 
 def _edge_samples(edge):
     """Discretize an offset edge while retaining its endpoints."""
-    return list(edge.discretize(Number=max(3, min(4000, int(edge.Length / 0.25) + 3))))
+    points = list(edge.discretize(Number=max(3, min(4000, int(edge.Length / 0.25) + 3))))
+    vertices = edge.Vertexes
+    if len(vertices) >= 2:
+        first, last = vertices[0].Point, vertices[-1].Point
+        if points[0].sub(first).Length <= points[0].sub(last).Length:
+            points[0], points[-1] = first, last
+        else:
+            points.reverse()
+            points[0], points[-1] = last, first
+    return points
 
 
 def _join_edge_route(edges, indices, start_cap, end_cap):
     """Combine consecutive offset edges into one filling boundary curve."""
-    route = [edges[index] for index in indices]
-    if not route:
+    remaining = [_edge_samples(edges[index]) for index in indices]
+    if not remaining:
         raise RuntimeError("Offset boundary has an empty side between end caps.")
-    samples = _edge_samples(route[0])
     cap_vertices = [vertex.Point for vertex in start_cap.Vertexes]
-    current = min((samples[0], samples[-1]),
-                  key=lambda point: min((point.sub(v).Length for v in cap_vertices), default=0))
-    joined = [current]
-    for edge in route:
-        points = _edge_samples(edge)
-        if points[-1].sub(current).Length < points[0].sub(current).Length:
+    first_edge = min(
+        range(len(remaining)),
+        key=lambda index: min(
+            min(point.sub(vertex).Length for vertex in cap_vertices)
+            for point in (remaining[index][0], remaining[index][-1])
+        ),
+    )
+    points = remaining.pop(first_edge)
+    if min(points[-1].sub(vertex).Length for vertex in cap_vertices) < min(
+        points[0].sub(vertex).Length for vertex in cap_vertices
+    ):
+        points.reverse()
+    current = points[-1]
+    joined = points
+    while remaining:
+        matches = []
+        for index, samples in enumerate(remaining):
+            first_distance = samples[0].sub(current).Length
+            last_distance = samples[-1].sub(current).Length
+            distance = min(first_distance, last_distance)
+            if distance <= 1e-5:
+                matches.append((distance, index, last_distance < first_distance))
+        if not matches:
+            raise RuntimeError("Offset boundary edges are not connected at a shared endpoint.")
+        _, index, reverse = min(matches)
+        points = remaining.pop(index)
+        if reverse:
             points.reverse()
-        if points[0].sub(current).Length > 1e-5:
-            raise RuntimeError("Offset boundary edges are not connected in order.")
         joined.extend(point for point in points[1:] if point.sub(joined[-1]).Length > 1e-7)
         current = joined[-1]
     end_vertices = [vertex.Point for vertex in end_cap.Vertexes]
@@ -50,6 +77,56 @@ def _join_edge_route(edges, indices, start_cap, end_cap):
     curve = Part.BSplineCurve()
     curve.interpolate(joined)
     return curve.toShape()
+
+
+def _boundary_routes(edges, start_index, end_index, tolerance=1e-5):
+    """Trace both sides by shared endpoints instead of relying on edge order."""
+    nodes = []
+
+    def node_for(point):
+        for index, known in enumerate(nodes):
+            if point.sub(known).Length <= tolerance:
+                return index
+        nodes.append(point)
+        return len(nodes) - 1
+
+    endpoints = {}
+    adjacency = {}
+    for index, edge in enumerate(edges):
+        if index in {start_index, end_index}:
+            continue
+        vertices = edge.Vertexes
+        if len(vertices) < 2:
+            raise RuntimeError("Offset boundary contains an edge without two endpoints.")
+        first, last = node_for(vertices[0].Point), node_for(vertices[-1].Point)
+        endpoints[index] = (first, last)
+        adjacency.setdefault(first, []).append(index)
+        adjacency.setdefault(last, []).append(index)
+
+    start_nodes = {node_for(vertex.Point) for vertex in edges[start_index].Vertexes}
+
+    def trace(origin):
+        route, used, current = [], set(), origin
+        for _ in range(len(endpoints)):
+            if current in start_nodes:
+                return route
+            choices = [edge_index for edge_index in adjacency.get(current, ())
+                       if edge_index not in used]
+            if len(choices) != 1:
+                raise RuntimeError("Offset boundary branches or has a gap between its caps.")
+            edge_index = choices[0]
+            used.add(edge_index)
+            route.append(edge_index)
+            first, last = endpoints[edge_index]
+            current = last if current == first else first
+        if current in start_nodes:
+            return route
+        raise RuntimeError("Offset boundary side does not reach its start cap.")
+
+    routes = [trace(node_for(vertex.Point)) for vertex in edges[end_index].Vertexes]
+    if len(routes) != 2 or routes[0] == routes[1]:
+        raise RuntimeError("Offset boundary does not have two distinct sides.")
+    return routes
 
 
 def _surface_filled_face(document, wire, start_center, end_center, half_width):
@@ -68,16 +145,9 @@ def _surface_filled_face(document, wire, start_center, end_center, half_width):
             raise RuntimeError(f"Offset wire is missing its rounded {label} cap.")
         cap_indices[label] = min(candidates)[1]
     start_index, end_index = cap_indices["start"], cap_indices["end"]
-
-    def between(first, last):
-        result, index = [], (first + 1) % len(edges)
-        while index != last:
-            result.append(index)
-            index = (index + 1) % len(edges)
-        return result
-
-    side_a = _join_edge_route(edges, between(end_index, start_index), edges[end_index], edges[start_index])
-    side_b = _join_edge_route(edges, between(start_index, end_index), edges[start_index], edges[end_index])
+    route_a, route_b = _boundary_routes(edges, start_index, end_index)
+    side_a = _join_edge_route(edges, route_a, edges[end_index], edges[start_index])
+    side_b = _join_edge_route(edges, list(reversed(route_b)), edges[start_index], edges[end_index])
     boundary = document.addObject("Part::Feature", "DuctBoundary")
     boundary.Shape = Part.Compound([side_a, edges[start_index].copy(), side_b, edges[end_index].copy()])
     document.recompute()
