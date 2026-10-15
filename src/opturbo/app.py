@@ -111,6 +111,7 @@ LABELS = {
     "residual_nut": "Turbulent-viscosity residual criterion",
     "pressure_scheme": "Pressure discretization",
     "source_initialization": "Actuator source initialization",
+    "previous_source_weight": "Previous-source weight (0–1)",
     "momentum_scheme": "Momentum discretization",
     "swirl_scheme": "Swirl discretization",
     "k_scheme": "k discretization",
@@ -205,6 +206,7 @@ FIELD_HELP = {
     "nut_scheme": "Turbulent-viscosity convection scheme used only by Spalart-Allmaras.",
     "pressure_velocity_coupling": "Pressure-velocity coupling method selected during the first Fluent setup.",
     "source_initialization": "Conservative starts from the existing generated source field. Previous candidate starts from the last successfully completed candidate's final relaxed actuator-disk sources; the first candidate falls back to conservative initialization. Reusing sources may destabilize convergence, so switch back to Conservative if a run becomes unstable.",
+    "previous_source_weight": "Blend weight for previous-candidate sources: 0 uses fully conservative initial sources; 1 uses fully the previous candidate's final sources.",
     "population_size": "Number of candidate designs evaluated in each GA generation.",
     "generations": "Number of GA generations to evaluate.",
     "elite_count": "Best candidates copied unchanged into the next generation.",
@@ -631,7 +633,7 @@ class OpTurboApp(tk.Tk):
                 groups = (
                     ("Flow and rotor", ("flow_speed_m_s", "density_kg_m3", "viscosity_pa_s", "rotor_radius_m", "hub_radius_m", "blades", "omega_rad_s", "pitch_deg")),
                     ("BEM correction", ("stations", "tip_loss_model")),
-                    ("Fluent / BEM coupling", ("max_outer_iterations", "fluent_iterations", "tolerance", "relaxation", "processors", "keep_iteration_data", "source_initialization")),
+                    ("Fluent / BEM coupling", ("max_outer_iterations", "fluent_iterations", "tolerance", "relaxation", "processors", "keep_iteration_data", "source_initialization", "previous_source_weight")),
                     ("Fluent discretization", ("pressure_scheme", "momentum_scheme", "swirl_scheme", "pressure_velocity_coupling")),
                     ("General residual criteria", ("residual_continuity", "residual_x_velocity", "residual_y_velocity", "residual_swirl")),
                 )
@@ -640,6 +642,8 @@ class OpTurboApp(tk.Tk):
                     columns[1], text="Turbulence model and equation residuals", padding=10)
                 self.turbulence_panel.pack(fill="x", padx=7, pady=6)
                 self.field_vars[("cfd", "viscous_model")].trace_add("write", self._refresh_turbulence_controls)
+                self.field_vars[("cfd", "source_initialization")].trace_add("write", self._refresh_source_weight_control)
+                self._refresh_source_weight_control()
                 self._refresh_turbulence_controls()
                 self.bontempo_panel = ttk.LabelFrame(
                     columns[1], text="Bontempo g coefficients", padding=8)
@@ -698,6 +702,13 @@ class OpTurboApp(tk.Tk):
         """Gray empirical g coefficients unless the Bontempo correction is selected."""
         enabled = self.field_vars[("cfd", "tip_loss_model")].get() == "bontempo2025"
         for control in self.bontempo_controls:
+            control.configure(state="normal" if enabled else "disabled")
+
+    def _refresh_source_weight_control(self, *_args: object) -> None:
+        """Enable previous-source weighting only in warm-start mode."""
+        control = getattr(self, "source_weight_control", None)
+        if control is not None:
+            enabled = self.field_vars[("cfd", "source_initialization")].get() == "previous_candidate"
             control.configure(state="normal" if enabled else "disabled")
 
     def _build_optimization_tab(self) -> None:
@@ -879,6 +890,8 @@ class OpTurboApp(tk.Tk):
                 widget = ttk.Entry(parent, textvariable=variable, width=24)
             if section == "cfd" and item.name in {"bontempo_g_a", "bontempo_g_b", "bontempo_g_c"}:
                 self.bontempo_controls.append(widget)
+            if section == "cfd" and item.name == "previous_source_weight":
+                self.source_weight_control = widget
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
             widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
@@ -1089,6 +1102,9 @@ class OpTurboApp(tk.Tk):
             raise ValueError("Rotor hub radius must be positive and smaller than rotor radius.")
         if not 0 < config.cfd.relaxation <= 1:
             raise ValueError("CFD relaxation must be greater than 0 and no more than 1.")
+        if (not math.isfinite(config.cfd.previous_source_weight)
+                or not 0 <= config.cfd.previous_source_weight <= 1):
+            raise ValueError("Previous-source weight must be a number from 0 to 1.")
         valid_cfd_choices = {
             name: set(values) for name, values in CFD_CHOICE_VALUES.items()
         }

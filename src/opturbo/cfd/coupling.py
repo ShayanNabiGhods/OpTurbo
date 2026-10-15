@@ -91,8 +91,13 @@ def run_coupling(config):
         source_initialization == "previous_candidate" and seed_path
     ) else None
     if seeded is not None:
-        axial, tangential = seeded
-        print("Using the previous successful candidate's actuator source terms as the initial guess.")
+        conservative_axial, conservative_tangential = initial_sources(blade)
+        weight = float(config.get("previous_source_weight", 1.0))
+        if not math.isfinite(weight) or not 0 <= weight <= 1:
+            raise ValueError("Previous-source weight must be a number from 0 to 1.")
+        axial = relax(conservative_axial, seeded[0], weight)
+        tangential = relax(conservative_tangential, seeded[1], weight)
+        print(f"Using previous-candidate actuator sources with weight {weight:.3g}.")
     else:
         axial, tangential = initial_sources(blade)
         if source_initialization == "previous_candidate":

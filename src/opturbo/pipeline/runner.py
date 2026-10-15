@@ -49,6 +49,9 @@ class PipelineRunner:
             raise ValueError("Choose a valid tip-loss correction model.")
         if config.cfd.source_initialization not in {"conservative", "previous_candidate"}:
             raise ValueError("Choose conservative or previous-candidate source initialization.")
+        if (not math.isfinite(config.cfd.previous_source_weight)
+                or not 0 <= config.cfd.previous_source_weight <= 1):
+            raise ValueError("Previous-source weight must be a number from 0 to 1.")
         variables = [replace(item, value=genome.get(item.key, item.value) if item.optimize else item.value)
                      for item in config.design_variables]
         geometry_overrides = {
@@ -299,6 +302,7 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "bontempo_g_c": config.cfd.bontempo_g_c,
             "keep_iteration_data": config.cfd.keep_iteration_data,
             "source_initialization": config.cfd.source_initialization,
+            "previous_source_weight": config.cfd.previous_source_weight,
             "previous_candidate_source_path": (
                 str(self.previous_candidate_sources)
                 if config.cfd.source_initialization == "previous_candidate"
