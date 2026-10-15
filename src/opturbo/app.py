@@ -110,6 +110,7 @@ LABELS = {
     "residual_omega": "Omega residual criterion",
     "residual_nut": "Turbulent-viscosity residual criterion",
     "pressure_scheme": "Pressure discretization",
+    "source_initialization": "Actuator source initialization",
     "momentum_scheme": "Momentum discretization",
     "swirl_scheme": "Swirl discretization",
     "k_scheme": "k discretization",
@@ -203,6 +204,7 @@ FIELD_HELP = {
     "omega_scheme": "Specific-dissipation-rate convection scheme used only by k-omega.",
     "nut_scheme": "Turbulent-viscosity convection scheme used only by Spalart-Allmaras.",
     "pressure_velocity_coupling": "Pressure-velocity coupling method selected during the first Fluent setup.",
+    "source_initialization": "Conservative starts from the existing generated source field. Previous candidate starts from the last successfully completed candidate's final relaxed actuator-disk sources; the first candidate falls back to conservative initialization. Reusing sources may destabilize convergence, so switch back to Conservative if a run becomes unstable.",
     "population_size": "Number of candidate designs evaluated in each GA generation.",
     "generations": "Number of GA generations to evaluate.",
     "elite_count": "Best candidates copied unchanged into the next generation.",
@@ -231,6 +233,7 @@ CFD_CHOICE_VALUES = {
     "nut_scheme": ("first_order_upwind", "second_order_upwind", "quick",
                    "third_order_muscl"),
     "pressure_velocity_coupling": ("simple", "simplec", "piso", "coupled"),
+    "source_initialization": ("conservative", "previous_candidate"),
 }
 
 CPU_CORE_CHOICES = ("Program Controlled", *(str(value) for value in range(1, 129)))
@@ -295,12 +298,13 @@ class LinePlot(tk.Canvas):
     def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str,
                  log_ticks: bool = False, y_step: float | None = None,
                  smooth: bool = True, markers: bool = False, scatter: bool = False,
-                 marker_size: int = 5, **kwargs):
+                 marker_size: int = 5, y_max: float | None = None, **kwargs):
         super().__init__(parent, background="white", highlightthickness=1,
                          highlightbackground="#c8ccd2", **kwargs)
         self.title, self.x_label, self.y_label = title, x_label, y_label
         self.log_ticks, self.y_step = log_ticks, y_step
         self.smooth, self.markers, self.scatter, self.marker_size = smooth, markers, scatter, marker_size
+        self.y_max = y_max
         self.series: list[tuple[str, list[float]]] = []
         self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
         self.bind("<Configure>", lambda _event: self.redraw())
@@ -325,7 +329,11 @@ class LinePlot(tk.Canvas):
         self.create_text(8, (top + bottom) / 2, text=self.y_label, angle=90, fill=self.palette["muted"], font=("Segoe UI", 8))
         values = [value for _, items in self.series for value in items if math.isfinite(value)]
         low, high = (min(values), max(values)) if values else ((-6, 0) if self.log_ticks else (0, 1))
-        if abs(high - low) < 1e-12:
+        if self.y_max is not None:
+            high = self.y_max
+            if low >= high:
+                low = min(0.0, high - 1.0)
+        elif abs(high - low) < 1e-12:
             padding = self.y_step or 0.5
             low, high = low - padding, high + padding
         step = 1.0 if self.log_ticks else self.y_step or (high - low) / 4
@@ -623,7 +631,7 @@ class OpTurboApp(tk.Tk):
                 groups = (
                     ("Flow and rotor", ("flow_speed_m_s", "density_kg_m3", "viscosity_pa_s", "rotor_radius_m", "hub_radius_m", "blades", "omega_rad_s", "pitch_deg")),
                     ("BEM correction", ("stations", "tip_loss_model")),
-                    ("Fluent / BEM coupling", ("max_outer_iterations", "fluent_iterations", "tolerance", "relaxation", "processors", "keep_iteration_data")),
+                    ("Fluent / BEM coupling", ("max_outer_iterations", "fluent_iterations", "tolerance", "relaxation", "processors", "keep_iteration_data", "source_initialization")),
                     ("Fluent discretization", ("pressure_scheme", "momentum_scheme", "swirl_scheme", "pressure_velocity_coupling")),
                     ("General residual criteria", ("residual_continuity", "residual_x_velocity", "residual_y_velocity", "residual_swirl")),
                 )
@@ -718,11 +726,12 @@ class OpTurboApp(tk.Tk):
         ttk.Label(results, text="Optimization progress", style="Title.TLabel").pack(anchor="w")
         self.progress = ttk.Progressbar(results, mode="determinate")
         self.progress.pack(fill="x", pady=8)
-        columns = ("evaluation", "generation", "candidate", "cp", "ct", "status")
+        columns = ("evaluation", "generation", "candidate", "cp", "ct", "cp_normalized", "ct_normalized", "status")
         self.results_tree = ttk.Treeview(results, columns=columns, show="headings", height=16)
-        widths = (80, 80, 80, 105, 105, 180)
+        headings = {"cp_normalized": "Cp normalized", "ct_normalized": "Ct normalized"}
+        widths = (70, 70, 70, 85, 85, 110, 110, 150)
         for name, width in zip(columns, widths):
-            self.results_tree.heading(name, text=name.replace("_", " ").title())
+            self.results_tree.heading(name, text=headings.get(name, name.replace("_", " ").title()))
             self.results_tree.column(name, width=width, anchor="center")
         self.results_tree.pack(fill="both", expand=True)
         self.best_var = tk.StringVar(
@@ -759,7 +768,8 @@ class OpTurboApp(tk.Tk):
         self.performance_plot = LinePlot(performance, "Optimization objective history", "Evaluation (-)", "Cp / Ct (-)",
                                          markers=True, scatter=True, height=260)
         self.performance_plot.pack(fill="both", expand=True)
-        self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)", height=260)
+        self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)",
+                                 y_step=0.1, y_max=1.0, height=260)
         self.bem_plot.pack(fill="both", expand=True)
         self.residual_plot = LinePlot(residual, "Current Fluent run", "Solver iteration sample (-)", "Residual (-)", log_ticks=True)
         self.residual_plot.pack(fill="both", expand=True)
@@ -1527,6 +1537,17 @@ class OpTurboApp(tk.Tk):
                 }
             optimizer = GeneticAlgorithm(config.design_variables, config.ga)
             runner = self._runner()
+            if resume and config.cfd.source_initialization == "previous_candidate":
+                completed_rows = [row for row in resume_results.values()
+                                  if row.get("status", "completed") == "completed"]
+                completed_rows.sort(key=lambda row: int(row.get("evaluation", 0)))
+                for row in reversed(completed_rows):
+                    candidate_path = row.get("candidate_dir")
+                    if candidate_path:
+                        source_path = Path(candidate_path) / "04_cfd" / "fluent" / "final_ad_sources.dat"
+                        if source_path.is_file():
+                            runner.previous_candidate_sources = source_path
+                            break
 
             def evaluate(genome: dict[str, float], generation: int, index: int):
                 folder = store.candidate_dir(generation, index)
@@ -1666,10 +1687,12 @@ class OpTurboApp(tk.Tk):
         cp = float(event.get("cp", float("nan")))
         ct_value = event.get("ct")
         ct = float(ct_value) if ct_value is not None else float("nan")
+        cp_normalized = self._format_table_value(event.get("cp_normalized"))
+        ct_normalized = self._format_table_value(event.get("ct_normalized"))
         status = event.get("status", "completed")
         self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
                                  event.get("candidate"), f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
-                                 f"{ct:.7g}" if math.isfinite(ct) else "—", status))
+                                 f"{ct:.7g}" if math.isfinite(ct) else "—", cp_normalized, ct_normalized, status))
         with self.history_lock:
             progress_value = (sum(1 for row in self.history
                                   if row.get("optimization_id") == event.get("optimization_id"))
@@ -1703,6 +1726,15 @@ class OpTurboApp(tk.Tk):
         self._draw_domain(self.domain_canvas, geometry, top, bottom)
         self._draw_duct(self.duct_canvas, geometry, top, bottom)
 
+    @staticmethod
+    def _format_table_value(value: object) -> str:
+        """Format an optional finite result value for the optimization table."""
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return "—"
+        return f"{parsed:.7g}" if math.isfinite(parsed) else "—"
+
     def _refresh_results(self) -> None:
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
@@ -1715,6 +1747,8 @@ class OpTurboApp(tk.Tk):
                                      event.get("candidate"),
                                      f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
                                      f"{ct:.7g}" if math.isfinite(ct) else "—",
+                                     self._format_table_value(event.get("cp_normalized")),
+                                     self._format_table_value(event.get("ct_normalized")),
                                      event.get("status", "completed")))
             fitness = float(event.get("fitness", cp))
             objective = str(event.get("objective", "cp"))

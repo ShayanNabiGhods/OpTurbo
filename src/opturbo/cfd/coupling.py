@@ -31,6 +31,41 @@ def clear_report_files(workdir):
         (Path(workdir) / filename).unlink(missing_ok=True)
 
 
+def load_source_terms(path, blade):
+    """Load a compatible source field from a previous successful candidate."""
+    try:
+        rows = [line.split() for line in Path(path).read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.lstrip().startswith("#")]
+        count = int(rows[0][0])
+        data = rows[1:]
+        if count != len(blade.radius) or len(data) != count:
+            return None
+        radii, axial, tangential = [], [], []
+        for row in data:
+            if len(row) != 3:
+                return None
+            radius, sx, st = map(float, row)
+            radii.append(radius)
+            axial.append(sx)
+            tangential.append(st)
+        if any(not all(math.isfinite(value) for value in values)
+               for values in (radii, axial, tangential)):
+            return None
+        if any(abs(a - b) > 1e-8 for a, b in zip(radii, blade.radius)):
+            return None
+        return axial, tangential
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def write_source_terms(path, blade, axial, tangential):
+    """Save a source field in the UDF input format for reuse by the next candidate."""
+    with Path(path).open("w", encoding="utf-8") as handle:
+        handle.write("# r Sx Sw\n" + str(len(blade.radius)) + "\n")
+        for radius, sx, st in zip(blade.radius, axial, tangential):
+            handle.write(f"{radius:.10e} {sx:.10e} {st:.10e}\n")
+
+
 def journal_failed(output):
     """Return whether Fluent stopped while processing the batch journal."""
     markers = (
@@ -50,7 +85,18 @@ def run_coupling(config):
     turbine, airfoil = config["turbine"], config["airfoil"]
     work, history = Path(config["workdir"]), Path(config["workdir"]) / "iteration_history"
     history.mkdir(exist_ok=True)
-    axial, tangential = initial_sources(blade)
+    seed_path = config.get("previous_candidate_source_path")
+    source_initialization = config.get("source_initialization", "conservative")
+    seeded = load_source_terms(seed_path, blade) if (
+        source_initialization == "previous_candidate" and seed_path
+    ) else None
+    if seeded is not None:
+        axial, tangential = seeded
+        print("Using the previous successful candidate's actuator source terms as the initial guess.")
+    else:
+        axial, tangential = initial_sources(blade)
+        if source_initialization == "previous_candidate":
+            print("No compatible previous-candidate sources found; using conservative initialization.")
     previous_cp = 0.0
     previous_ct = 0.0
     for iteration in range(1, config["max_outer"] + 1):
@@ -93,6 +139,7 @@ def run_coupling(config):
         (work / "latest_result.json").write_text(
             json.dumps(result_data, indent=2), encoding="utf-8")
         axial, tangential = relax(axial, new.axial, config["relax"]), relax(tangential, new.tangential, config["relax"])
+        write_source_terms(work / "final_ad_sources.dat", blade, axial, tangential)
         print(f"outer {iteration:02d}: Cp={value.cp:.6f}")
         print(f"outer {iteration:02d}: Ct={value.ct:.6f}")
         if max(abs(value.cp - previous_cp), abs(value.ct - previous_ct)) < config["tolerance"]:

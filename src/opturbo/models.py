@@ -114,6 +114,7 @@ class CfdSettings:
     residual_omega: float = 1e-4
     residual_nut: float = 1e-4
     pressure_scheme: str = "presto"
+    source_initialization: str = "conservative"
     momentum_scheme: str = "quick"
     swirl_scheme: str = "quick"
     k_scheme: str = "quick"

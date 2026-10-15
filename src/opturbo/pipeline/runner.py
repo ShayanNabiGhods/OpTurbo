@@ -37,6 +37,7 @@ class PipelineRunner:
         self.resources = self.root / "resources"
         self.emit = emit
         self.cancel = cancel
+        self.previous_candidate_sources: Path | None = None
 
     def evaluate(self, config: ProjectConfig, genome: dict[str, float], candidate_dir: Path) -> dict:
         """Evaluate one genome and return Cp, Ct, and saved artifact paths."""
@@ -46,6 +47,8 @@ class PipelineRunner:
         """Run stages 1–3 serially and copy the mesh out of the shared handoff."""
         if config.cfd.tip_loss_model not in {"prandtl", "bontempo2025"}:
             raise ValueError("Choose a valid tip-loss correction model.")
+        if config.cfd.source_initialization not in {"conservative", "previous_candidate"}:
+            raise ValueError("Choose conservative or previous-candidate source initialization.")
         variables = [replace(item, value=genome.get(item.key, item.value) if item.optimize else item.value)
                      for item in config.design_variables]
         geometry_overrides = {
@@ -104,6 +107,9 @@ class PipelineRunner:
         result["fitness"] = objective_value(result, prepared.config.ga.objective)
         result["candidate_dir"] = str(prepared.folder)
         atomic_json(prepared.folder / "result.json", result)
+        final_sources = prepared.folder / "04_cfd" / "fluent" / "final_ad_sources.dat"
+        if final_sources.is_file():
+            self.previous_candidate_sources = final_sources
         return result
 
     def _geometry(self, config: ProjectConfig, geometry: GeometrySettings,
@@ -292,6 +298,13 @@ Save(FilePath=r"{windows_path(project)}", Overwrite=True)
             "bontempo_g_b": config.cfd.bontempo_g_b,
             "bontempo_g_c": config.cfd.bontempo_g_c,
             "keep_iteration_data": config.cfd.keep_iteration_data,
+            "source_initialization": config.cfd.source_initialization,
+            "previous_candidate_source_path": (
+                str(self.previous_candidate_sources)
+                if config.cfd.source_initialization == "previous_candidate"
+                and self.previous_candidate_sources is not None
+                and self.previous_candidate_sources.is_file() else None
+            ),
             "fluent_settings": {
                 "viscous_model": config.cfd.viscous_model,
                 "residual_continuity": config.cfd.residual_continuity,
