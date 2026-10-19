@@ -252,6 +252,17 @@ TURBULENCE_FIELDS = {"viscous_model"} | {
 }
 
 
+def saved_configuration_matches(saved: object, requested: ProjectConfig) -> bool:
+    """Compare snapshots after filling defaults for settings added in newer versions."""
+    if not isinstance(saved, dict):
+        return False
+    try:
+        normalized = ProjectConfig.from_dict(saved).to_dict()
+    except (TypeError, ValueError):
+        return False
+    return normalized == requested.to_dict()
+
+
 class ToolTip:
     """Show a short explanation when the pointer rests over a GUI control."""
 
@@ -1458,7 +1469,7 @@ class OpTurboApp(tk.Tk):
                 messagebox.showerror("No resumable optimization", "This project has no unfinished optimization to resume.")
                 self._update_resume_button()
                 return
-            if state.get("configuration") != requested_config.to_dict():
+            if not saved_configuration_matches(state.get("configuration"), requested_config):
                 messagebox.showerror(
                     "Settings changed",
                     "The project settings differ from the saved optimization. Restore the original settings before resuming.",
@@ -1531,7 +1542,7 @@ class OpTurboApp(tk.Tk):
                 state = store.load_optimization_state()
                 if not state or state.get("status") == "completed":
                     raise RuntimeError("This project has no unfinished optimization to resume.")
-                if state.get("configuration") != config.to_dict():
+                if not saved_configuration_matches(state.get("configuration"), config):
                     raise RuntimeError("Project settings changed since this optimization was started.")
                 run_id = str(state["run_id"])
             else:
