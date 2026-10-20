@@ -367,3 +367,7 @@ inflation.MaximumThickness = Quantity(INFLATION_MAX_THICKNESS_CM, "cm")
 
 
 mesh.GenerateMesh()
+try:
+    print("OPTURBO_MESH_CELL_COUNT={}".format(mesh.ElementCount))
+except Exception:
+    pass

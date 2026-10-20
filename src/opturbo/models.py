@@ -151,6 +151,7 @@ class AccessibilitySettings:
     accent_color: str = "#2f6fed"
     candidate_marker_size: int = 5
     outer_marker_size: int = 5
+    table_row_spacing: int = 0
 
 
 def default_parsec_variables() -> list[VariableSpec]:

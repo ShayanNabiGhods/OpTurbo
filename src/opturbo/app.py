@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields, replace
+from dataclasses import asdict, fields, replace
 from copy import deepcopy
 import json
 import math
@@ -28,6 +28,7 @@ from .models import (
     default_design_variables,
 )
 from .optimizer import GeneticAlgorithm
+from .mesh_study import automatic_mesh_settings
 from .objectives import OBJECTIVES, objective_value
 from .parsec import lower_profile, nested_parameters, profile, validate_lower_profile, validate_profile
 from .pipeline import PipelineRunner
@@ -239,6 +240,10 @@ CFD_CHOICE_VALUES = {
 }
 
 CPU_CORE_CHOICES = ("Program Controlled", *(str(value) for value in range(1, 129)))
+MESH_STUDY_SIZE_FIELDS = {
+    "global_size_cm", "growth_rate", "curvature_angle_deg", "resolution_size_cm",
+    "duct_size_cm", "hub_size_cm", "inflation_layers", "inflation_max_thickness_cm",
+}
 
 TURBULENCE_EQUATIONS = {
     "k_omega": ("k", "omega"),
@@ -288,19 +293,49 @@ class ToolTip:
 
 
 class ScrollableFrame(ttk.Frame):
-    """A reusable vertically scrollable settings panel."""
+    """A settings container that shows a vertical scrollbar only when needed."""
 
     def __init__(self, parent: tk.Misc):
         super().__init__(parent)
         self.canvas = tk.Canvas(self, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self._scrollbar_visible = False
         self.body = ttk.Frame(self.canvas, padding=8)
         self.window = self.canvas.create_window((0, 0), window=self.body, anchor="nw")
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        self.body.bind("<Configure>", lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(self.window, width=event.width))
+        self.body.bind("<Configure>", self._content_changed)
+        self.canvas.bind("<Configure>", self._canvas_resized)
+
+    def _content_changed(self, _event: object = None) -> None:
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self._schedule_scrollbar_check()
+
+    def _canvas_resized(self, event: tk.Event) -> None:
+        self.canvas.itemconfigure(self.window, width=event.width)
+        self._schedule_scrollbar_check()
+
+    def _schedule_scrollbar_check(self) -> None:
+        if not getattr(self, "_scroll_check_pending", False):
+            self._scroll_check_pending = True
+            self.after_idle(self._update_scrollbar_visibility)
+
+    def _update_scrollbar_visibility(self) -> None:
+        self._scroll_check_pending = False
+        if not self.winfo_exists():
+            return
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        viewport_height = self.canvas.winfo_height()
+        content_height = self.body.winfo_reqheight()
+        should_show = viewport_height > 1 and content_height > viewport_height + 2
+        if should_show == self._scrollbar_visible:
+            return
+        self._scrollbar_visible = should_show
+        if should_show:
+            self.scrollbar.pack(side="right", fill="y")
+        else:
+            self.scrollbar.pack_forget()
+            self.canvas.yview_moveto(0)
 
 
 class LinePlot(tk.Canvas):
@@ -425,6 +460,12 @@ class OpTurboApp(tk.Tk):
         self.outer_series: dict[str, list[float]] = {}
         self.worker: threading.Thread | None = None
         self.history: list[dict] = []
+        self.mesh_study_rows: list[dict] = []
+        self.mesh_study_vars: dict[str, tk.StringVar] = {}
+        self.mesh_study_controls: dict[str, ttk.Widget] = {}
+        self.mesh_study_labels: dict[str, ttk.Label] = {}
+        self.mesh_study_enabled: dict[str, tk.BooleanVar] = {}
+        self.active_task: str | None = None
         self.history_lock = threading.Lock()
         self.best_fitness = float("-inf")
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
@@ -467,9 +508,26 @@ class OpTurboApp(tk.Tk):
         style.configure("TLabelframe.Label", background=colors["background"], foreground=colors["text"], font=("Segoe UI", size, "bold"))
         style.configure("TButton", font=("Segoe UI", size), padding=(7, 4))
         style.configure("TEntry", fieldbackground=colors["surface"], foreground=colors["text"])
-        style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"])
-        style.configure("Treeview", background=colors["surface"], fieldbackground=colors["surface"], foreground=colors["text"], font=("Segoe UI", size), rowheight=max(22, size + 12))
+        style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"],
+                        arrowcolor=colors["text"])
+        style.map(
+            "TCombobox",
+            fieldbackground=[("disabled", colors["surface"]), ("readonly", colors["surface"]),
+                             ("!disabled", colors["surface"])],
+            foreground=[("disabled", colors["muted"]), ("readonly", colors["text"]),
+                        ("!disabled", colors["text"])],
+            selectbackground=[("readonly", colors["surface"]), ("!disabled", colors["surface"])],
+            selectforeground=[("readonly", colors["text"]), ("!disabled", colors["text"])],
+        )
+        row_spacing_var = getattr(self, "table_row_spacing_var", None)
+        row_spacing = int(row_spacing_var.get()) if row_spacing_var else self.config_model.accessibility.table_row_spacing
+        style.configure("Treeview", background=colors["surface"], fieldbackground=colors["surface"],
+                        foreground=colors["text"], font=("Segoe UI", size),
+                        rowheight=max(22, size + 12) + row_spacing)
         style.configure("Treeview.Heading", font=("Segoe UI", size, "bold"))
+        style.configure("TScrollbar", background=colors["surface"], troughcolor=colors["background"],
+                        arrowcolor=colors["muted"])
+        style.map("TScrollbar", background=[("active", colors["accent"])])
         style.configure("Title.TLabel", font=("Segoe UI", max(14, size + 6), "bold"), foreground=colors["text"])
         style.configure("Subtitle.TLabel", font=("Segoe UI", size), foreground=colors["muted"])
         style.configure("Accent.TButton", font=("Segoe UI", size, "bold"))
@@ -477,16 +535,46 @@ class OpTurboApp(tk.Tk):
         style.map("TNotebook.Tab", background=[("selected", colors["accent"])], foreground=[("selected", "white")])
         style.configure("Horizontal.TProgressbar", background=colors["accent"])
         style.configure("Status.TLabel", padding=(8, 4), foreground=colors["muted"])
+        self._refresh_native_theme_widgets()
+
+    def _refresh_native_theme_widgets(self) -> None:
+        """Apply theme colors to Tk widgets and native ttk combobox popdowns."""
+        colors = self.palette
+
+        def visit(widget: tk.Misc) -> None:
+            if isinstance(widget, ScrollableFrame):
+                widget.canvas.configure(background=colors["background"], highlightbackground=colors["background"])
+            if isinstance(widget, ttk.Combobox):
+                try:
+                    popdown = str(self.tk.call("ttk::combobox::PopdownWindow", str(widget)))
+                    listbox = f"{popdown}.f.l"
+                    self.tk.call(
+                        listbox, "configure",
+                        "-background", colors["surface"],
+                        "-foreground", colors["text"],
+                        "-selectbackground", colors["accent"],
+                        "-selectforeground", "white",
+                    )
+                except tk.TclError:
+                    # Some Tcl/Tk builds create the native popdown only when first opened.
+                    pass
+            for child in widget.winfo_children():
+                visit(child)
+
+        visit(self)
 
     def _apply_accessibility(self, _event: object | None = None) -> None:
         """Apply appearance preferences immediately without restarting the app."""
         settings = AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
                                          high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get(),
                                          candidate_marker_size=int(self.candidate_marker_size_var.get()),
-                                         outer_marker_size=int(self.outer_marker_size_var.get()))
+                                         outer_marker_size=int(self.outer_marker_size_var.get()),
+                                         table_row_spacing=int(self.table_row_spacing_var.get()))
         self.palette = self._theme_palette(settings)
         self.config_model.accessibility = settings
         self._configure_style()
+        if hasattr(self, "mesh_study_controls") and self.mesh_study_controls:
+            self._refresh_mesh_study_controls()
         for canvas in (getattr(self, "domain_canvas", None), getattr(self, "duct_canvas", None)):
             if canvas:
                 canvas.configure(background=self.palette["canvas"])
@@ -502,6 +590,11 @@ class OpTurboApp(tk.Tk):
         if hasattr(self, "log_text"):
             self.log_text.configure(background=self.palette["canvas"], foreground=self.palette["text"],
                                     insertbackground=self.palette["text"])
+        if hasattr(self, "mesh_study_details"):
+            self.mesh_study_details.configure(
+                background=self.palette["surface"], foreground=self.palette["text"],
+                insertbackground=self.palette["text"], selectbackground=self.palette["accent"],
+                selectforeground="white")
         self._draw_design()
 
     def _build_menu(self) -> None:
@@ -533,6 +626,7 @@ class OpTurboApp(tk.Tk):
         self._build_project_tab()
         self._build_design_tab()
         self._build_workflow_tab()
+        self._build_mesh_study_tab()
         self._build_optimization_tab()
         self._build_monitor_tab()
         self._build_accessibility_tab()
@@ -543,10 +637,11 @@ class OpTurboApp(tk.Tk):
         tab.columnconfigure(0, weight=1, uniform="project_columns")
         tab.columnconfigure(1, weight=1, uniform="project_columns")
         tab.rowconfigure(0, weight=1)
-        left = ttk.Frame(tab)
-        right = ttk.Frame(tab)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        left_scroll = ScrollableFrame(tab)
+        right_scroll = ScrollableFrame(tab)
+        left_scroll.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        right_scroll.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        left, right = left_scroll.body, right_scroll.body
         project_box = ttk.LabelFrame(left, text="Workflow project", padding=12)
         project_box.pack(fill="x")
         ttk.Label(project_box, text="Project name").grid(row=0, column=0, sticky="w", pady=5)
@@ -584,8 +679,9 @@ class OpTurboApp(tk.Tk):
         design_picker.bind("<<ComboboxSelected>>", self._switch_design_type)
         ttk.Label(left, text="Only variables used by the selected design are shown. Unticked rows stay fixed.",
                   style="Subtitle.TLabel", wraplength=500).pack(anchor="w", pady=(0, 8))
-        self.parsec_body = ttk.Frame(left)
-        self.parsec_body.pack(fill="both", expand=True)
+        self.parsec_scroll = ScrollableFrame(left)
+        self.parsec_scroll.pack(fill="both", expand=True)
+        self.parsec_body = self.parsec_scroll.body
         controls = ttk.Frame(left)
         controls.pack(fill="x", pady=8)
         ttk.Button(controls, text="Update preview", command=self._update_preview_from_fields).pack(side="left")
@@ -606,19 +702,19 @@ class OpTurboApp(tk.Tk):
 
     def _build_workflow_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=10)
+        self.workflow_tab = tab
         self.notebook.add(tab, text="  Workflow Settings  ")
         pages = ttk.Notebook(tab)
+        self.workflow_pages = pages
         pages.pack(fill="both", expand=True)
         for title, section, cls in (("Geometry", "geometry", GeometrySettings),
                                     ("Meshing", "mesh", MeshSettings),
                                     ("CFD / BEM", "cfd", CfdSettings)):
-            if section == "cfd":
-                page = ScrollableFrame(pages)
-                body = page.body
-            else:
-                page = ttk.Frame(pages, padding=8)
-                body = page
+            page = ScrollableFrame(pages)
+            body = page.body
             pages.add(page, text=title)
+            if section == "mesh":
+                self.mesh_settings_page = page
             # Initialize a persistent variable for every setting before placing
             # fields into separate groups (including currently hidden equations).
             self._add_dataclass_form(body, section, cls,
@@ -664,6 +760,107 @@ class OpTurboApp(tk.Tk):
                                          inline_help=False)
                 self.field_vars[("cfd", "tip_loss_model")].trace_add("write", self._refresh_bontempo_controls)
                 self._refresh_bontempo_controls()
+
+    def _build_mesh_study_tab(self) -> None:
+        """Build controls and candidate review table for a fixed-design mesh study."""
+        tab = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(tab, text="  Mesh Study  ")
+        ttk.Label(
+            tab,
+            text=("Compare mesh settings for one design. Geometry and CFD/BEM settings come from Workflow Settings; "
+                  "only the mesh settings below vary. Candidate time is mesh plus Fluent/BEM time."),
+            style="Subtitle.TLabel", wraplength=1120, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+        pane = ttk.Panedwindow(tab, orient="horizontal")
+        pane.pack(fill="both", expand=True)
+        controls_scroll = ScrollableFrame(pane)
+        controls = ttk.LabelFrame(controls_scroll.body, text="Mesh candidate setup", padding=8)
+        controls.pack(fill="x")
+        review = ttk.Frame(pane, padding=(6, 0, 0, 0))
+        pane.add(controls_scroll, weight=1)
+        pane.add(review, weight=3)
+        method_label = ttk.Label(controls, text="Mesh method")
+        method_label.grid(row=0, column=1, sticky="w", padx=4, pady=3)
+        self.mesh_study_labels["method"] = method_label
+        self.mesh_study_vars["method"] = tk.StringVar()
+        method = ttk.Combobox(controls, textvariable=self.mesh_study_vars["method"], state="readonly",
+                              values=("Default (ANSYS automatic)", "Quad", "Tri", "MultiZone"), width=25)
+        method.grid(row=0, column=2, sticky="ew", padx=4, pady=3)
+        self.mesh_study_controls["method"] = method
+        for row, item in enumerate(fields(MeshSettings), 1):
+            name = item.name
+            if name == "method":
+                continue
+            if name in MESH_STUDY_SIZE_FIELDS:
+                self.mesh_study_enabled[name] = tk.BooleanVar(value=True)
+            self.mesh_study_vars[name] = tk.StringVar()
+            if name in self.mesh_study_enabled:
+                ttk.Checkbutton(controls, variable=self.mesh_study_enabled[name],
+                                command=self._refresh_mesh_study_controls).grid(
+                    row=row, column=0, sticky="w", padx=4, pady=3)
+            label = ttk.Label(controls, text=LABELS.get(name, name.replace("_", " ").title()))
+            label.grid(row=row, column=1, sticky="w", padx=4, pady=3)
+            self.mesh_study_labels[name] = label
+            if name == "cpu_cores":
+                widget = ttk.Combobox(controls, textvariable=self.mesh_study_vars[name],
+                                      values=CPU_CORE_CHOICES, state="readonly", width=23)
+            else:
+                widget = ttk.Entry(controls, textvariable=self.mesh_study_vars[name], width=25)
+            widget.grid(row=row, column=2, sticky="ew", padx=4, pady=3)
+            self.mesh_study_controls[name] = widget
+        self._refresh_mesh_study_controls()
+        self.mesh_study_count_var = tk.StringVar(value="20")
+        count_row = len(fields(MeshSettings)) + 1
+        ttk.Label(controls, text="Automatic sweep cases").grid(
+            row=count_row, column=0, columnspan=2, sticky="w", padx=4, pady=(8, 3))
+        ttk.Spinbox(controls, from_=1, to=100, textvariable=self.mesh_study_count_var, width=8).grid(
+            row=count_row, column=2, sticky="w", padx=4, pady=(8, 3))
+        self.mesh_study_manual_button = ttk.Button(
+            controls, text="Run this mesh setup", command=self._start_manual_mesh_study)
+        self.mesh_study_manual_button.grid(row=count_row + 1, column=0, columnspan=3, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_auto_button = ttk.Button(
+            controls, text="Run automatic mesh sweep", command=self._start_automatic_mesh_study)
+        self.mesh_study_auto_button.grid(row=count_row + 2, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        self.mesh_study_stop_button = ttk.Button(
+            controls, text="Stop after current case", command=self._stop, state="disabled")
+        self.mesh_study_stop_button.grid(row=count_row + 3, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
+        self.mesh_study_progress.grid(row=count_row + 4, column=0, columnspan=3, sticky="ew", padx=4, pady=(8, 3))
+        ttk.Label(controls, text="The automatic sweep screens low and high values for each mesh control, then samples combinations.",
+                  style="Subtitle.TLabel", wraplength=280, justify="left").grid(
+            row=count_row + 5, column=0, columnspan=3, sticky="w", padx=4, pady=(3, 8))
+        ttk.Button(controls, text="Load mesh values from Workflow Settings",
+                   command=self._load_mesh_study_values_from_workflow).grid(
+            row=count_row + 6, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        controls.columnconfigure(2, weight=1)
+
+        ttk.Label(review, text="Mesh study candidates", style="Title.TLabel").pack(anchor="w", pady=(0, 4))
+        table_frame = ttk.Frame(review)
+        table_frame.pack(fill="both", expand=True)
+        columns = ("id", "status", "cells", "mesh_s", "fluent_s", "total_s", "outer",
+                   "cp", "ct", "cp_norm", "ct_norm")
+        self.mesh_study_tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+        headings = ("ID", "Status", "Cells", "Mesh (s)", "Fluent/BEM (s)", "Total (s)", "Outer",
+                    "Cp", "Ct", "Cp norm.", "Ct norm.")
+        for name, heading in zip(columns, headings):
+            self.mesh_study_tree.heading(name, text=heading)
+            self.mesh_study_tree.column(name, width=70, anchor="center", stretch=False)
+        yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.mesh_study_tree.yview)
+        self.mesh_study_tree.configure(yscrollcommand=yscroll.set)
+        self.mesh_study_tree.grid(row=0, column=0, sticky="nsew")
+        yscroll.grid(row=0, column=1, sticky="ns")
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+        self.mesh_study_tree.bind("<Configure>", self._resize_mesh_study_columns, add="+")
+        self.mesh_study_tree.bind("<<TreeviewSelect>>", self._show_mesh_study_selection)
+        details_row = ttk.Frame(review)
+        details_row.pack(fill="x", pady=(8, 0))
+        self.mesh_study_details = tk.Text(details_row, height=9, wrap="word", state="disabled")
+        self.mesh_study_details.pack(side="left", fill="both", expand=True)
+        self.mesh_study_copy_button = ttk.Button(
+            details_row, text="Copy selected mesh settings to Workflow / Meshing",
+            command=self._copy_selected_mesh_settings, state="disabled")
+        self.mesh_study_copy_button.pack(side="right", padx=(8, 0), anchor="n")
 
     def _place_setting_groups(self, parent: ttk.Frame, section: str, cls: type,
                               groups: tuple[tuple[str, tuple[str, ...]], ...],
@@ -727,9 +924,10 @@ class OpTurboApp(tk.Tk):
         self.notebook.add(tab, text="  Optimization  ")
         pane = ttk.Panedwindow(tab, orient="horizontal")
         pane.pack(fill="both", expand=True)
-        settings = ttk.Frame(pane, padding=8)
+        settings_scroll = ScrollableFrame(pane)
+        settings = settings_scroll.body
         results = ttk.Frame(pane, padding=(12, 0))
-        pane.add(settings, weight=1)
+        pane.add(settings_scroll, weight=1)
         pane.add(results, weight=2)
         self._add_dataclass_form(settings, "ga", GaSettings)
         actions = ttk.Frame(settings)
@@ -749,13 +947,20 @@ class OpTurboApp(tk.Tk):
         self.progress = ttk.Progressbar(results, mode="determinate")
         self.progress.pack(fill="x", pady=8)
         columns = ("evaluation", "generation", "candidate", "cp", "ct", "cp_normalized", "ct_normalized", "status")
-        self.results_tree = ttk.Treeview(results, columns=columns, show="headings", height=16)
+        results_table = ttk.Frame(results)
+        results_table.pack(fill="both", expand=True)
+        self.results_tree = ttk.Treeview(results_table, columns=columns, show="headings", height=16)
         headings = {"cp_normalized": "Cp normalized", "ct_normalized": "Ct normalized"}
         widths = (70, 70, 70, 85, 85, 110, 110, 150)
         for name, width in zip(columns, widths):
             self.results_tree.heading(name, text=headings.get(name, name.replace("_", " ").title()))
             self.results_tree.column(name, width=width, anchor="center")
-        self.results_tree.pack(fill="both", expand=True)
+        results_scroll = ttk.Scrollbar(results_table, orient="vertical", command=self.results_tree.yview)
+        self.results_tree.configure(yscrollcommand=results_scroll.set)
+        self.results_tree.grid(row=0, column=0, sticky="nsew")
+        results_scroll.grid(row=0, column=1, sticky="ns")
+        results_table.rowconfigure(0, weight=1)
+        results_table.columnconfigure(0, weight=1)
         self.best_var = tk.StringVar(
             value=f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         ttk.Label(results, textvariable=self.best_var, style="Title.TLabel").pack(anchor="w", pady=10)
@@ -803,7 +1008,9 @@ class OpTurboApp(tk.Tk):
         """Build visual and keyboard-use settings that are safe to change at runtime."""
         tab = ttk.Frame(self.notebook, padding=16)
         self.notebook.add(tab, text="  Accessibility  ")
-        panel = ttk.LabelFrame(tab, text="Display and interaction", padding=14)
+        settings_scroll = ScrollableFrame(tab)
+        settings_scroll.pack(fill="both", expand=True)
+        panel = ttk.LabelFrame(settings_scroll.body, text="Display and interaction", padding=14)
         panel.pack(anchor="nw", fill="x")
         ttk.Label(panel, text="Appearance", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(panel, text="Choose a colour theme, enlarge text, or enable high contrast. Changes apply immediately and are saved with the project.",
@@ -814,6 +1021,7 @@ class OpTurboApp(tk.Tk):
         self.accent_var = tk.StringVar(value="#2f6fed")
         self.candidate_marker_size_var = tk.StringVar(value="5")
         self.outer_marker_size_var = tk.StringVar(value="5")
+        self.table_row_spacing_var = tk.StringVar(value="0")
         ttk.Label(panel, text="Theme").grid(row=2, column=0, sticky="w", pady=5)
         theme = ttk.Combobox(panel, textvariable=self.theme_var, values=("light", "dark"), state="readonly", width=14)
         theme.grid(row=2, column=1, sticky="w", pady=5)
@@ -852,6 +1060,14 @@ class OpTurboApp(tk.Tk):
         ttk.Label(panel, text="Marker size for the Outer Cp / Ct panel.", style="Subtitle.TLabel").grid(row=15, column=1, sticky="w")
         candidate_markers.bind("<<ComboboxSelected>>", self._apply_accessibility)
         outer_markers.bind("<<ComboboxSelected>>", self._apply_accessibility)
+        ttk.Label(panel, text="Table row spacing").grid(row=16, column=0, sticky="w", pady=(12, 5))
+        row_spacing = ttk.Combobox(panel, textvariable=self.table_row_spacing_var,
+                                   values=tuple(str(value) for value in range(0, 21, 2)),
+                                   state="readonly", width=14)
+        row_spacing.grid(row=16, column=1, sticky="w", pady=(12, 5))
+        ttk.Label(panel, text="Extra vertical space between rows in all tables, in pixels.",
+                  style="Subtitle.TLabel").grid(row=17, column=1, sticky="w")
+        row_spacing.bind("<<ComboboxSelected>>", self._apply_accessibility)
 
     def _add_dataclass_form(self, parent: ttk.Frame, section: str, cls: type,
                             browse_paths: bool = False, exclude: set[str] | None = None,
@@ -985,12 +1201,196 @@ class OpTurboApp(tk.Tk):
         self.accent_var.set(self.config_model.accessibility.accent_color)
         self.candidate_marker_size_var.set(str(self.config_model.accessibility.candidate_marker_size))
         self.outer_marker_size_var.set(str(self.config_model.accessibility.outer_marker_size))
+        self.table_row_spacing_var.set(str(self.config_model.accessibility.table_row_spacing))
         if hasattr(self, "best_var"):
-            self.best_var.set(f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
+            self.best_var.set(self._best_result_text())
         self.design_variable_sets = {self.config_model.geometry.design_type: self.config_model.design_variables[:]}
         self._make_parsec_rows()
+        self._load_mesh_study_project_state()
         self._apply_accessibility()
         self._draw_design()
+
+    def _get_mesh_study_enabled(self) -> dict[str, bool]:
+        return {name: variable.get() for name, variable in self.mesh_study_enabled.items()}
+
+    def _refresh_mesh_study_controls(self) -> None:
+        """Disable and visually gray mesh controls excluded from the study."""
+        for name, widget in self.mesh_study_controls.items():
+            is_enabled = self.mesh_study_enabled[name].get() if name in self.mesh_study_enabled else True
+            widget.configure(state=("readonly" if name in {"method", "cpu_cores"} else "normal")
+                             if is_enabled else "disabled")
+            self.mesh_study_labels[name].configure(
+                foreground=self.palette["text"] if is_enabled else self.palette["muted"])
+
+    def _resize_mesh_study_columns(self, event: object) -> None:
+        """Distribute mesh-study table columns across its available width."""
+        width = max(1, event.width - 4)
+        weights = (0.48, 0.72, 0.9, 0.8, 1.05, 0.85, 0.58, 0.72, 0.72, 0.92, 0.92)
+        total_weight = sum(weights)
+        columns = self.mesh_study_tree["columns"]
+        for name, weight in zip(columns, weights):
+            self.mesh_study_tree.column(name, width=max(36, round(width * weight / total_weight)), stretch=False)
+
+    @staticmethod
+    def _mesh_settings_with_enabled_values(
+        workflow_settings: MeshSettings, panel_settings: MeshSettings, enabled: dict[str, bool],
+    ) -> MeshSettings:
+        """Use panel values for enabled controls and workflow values for disabled ones."""
+        values = asdict(workflow_settings)
+        for item in fields(MeshSettings):
+            if enabled.get(item.name, True):
+                values[item.name] = getattr(panel_settings, item.name)
+        return MeshSettings(**values)
+
+    def _set_mesh_study_form(self, settings: MeshSettings, enabled: dict[str, bool] | None = None) -> None:
+        """Display one mesh configuration in the mesh-study controls."""
+        for item in fields(MeshSettings):
+            value = getattr(settings, item.name)
+            if item.name == "method" and value == "Default":
+                value = "Default (ANSYS automatic)"
+            elif item.name == "cpu_cores" and value is None:
+                value = "Program Controlled"
+            self.mesh_study_vars[item.name].set(str(value))
+            if enabled is not None and item.name in enabled:
+                self.mesh_study_enabled[item.name].set(enabled.get(item.name, True))
+        self._refresh_mesh_study_controls()
+
+    def _load_mesh_study_project_state(self) -> None:
+        """Load saved mesh-study cases and per-project study controls."""
+        settings = self.config_model.mesh
+        enabled = {name: True for name in MESH_STUDY_SIZE_FIELDS}
+        rows = []
+        if self.store is not None:
+            study_root = self.store.root / "mesh_study"
+            settings_path = study_root / "settings.json"
+            history_path = study_root / "history.json"
+            try:
+                if settings_path.is_file():
+                    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict) and "mesh_settings" in payload:
+                        settings = MeshSettings(**payload["mesh_settings"])
+                        saved_enabled = payload.get("enabled_variables", {})
+                        enabled.update({name: bool(value) for name, value in saved_enabled.items()
+                                        if name in enabled})
+                    else:
+                        # Accept settings files created before per-variable toggles existed.
+                        settings = MeshSettings(**payload)
+            except (OSError, TypeError, ValueError):
+                settings = self.config_model.mesh
+            try:
+                if history_path.is_file():
+                    rows = json.loads(history_path.read_text(encoding="utf-8")).get("candidates", [])
+            except (OSError, TypeError, ValueError):
+                rows = []
+        self.mesh_study_rows = rows if isinstance(rows, list) else []
+        self._set_mesh_study_form(settings, enabled)
+        self._refresh_mesh_study_table()
+
+    def _refresh_mesh_study_table(self) -> None:
+        """Rebuild the mesh-study summary table from persisted candidate rows."""
+        if not hasattr(self, "mesh_study_tree"):
+            return
+        for iid in self.mesh_study_tree.get_children():
+            self.mesh_study_tree.delete(iid)
+        for index, row in enumerate(self.mesh_study_rows, 1):
+            iid = str(row.get("id", index))
+            values = (
+                row.get("id", index), row.get("status", "unknown"),
+                self._format_cell_count(row.get("cell_count")),
+                self._format_seconds(row.get("meshing_seconds")),
+                self._format_seconds(row.get("fluent_solution_seconds")),
+                self._format_seconds(row.get("candidate_seconds")),
+                row.get("outer_iterations") if row.get("outer_iterations") is not None else "—",
+                self._format_table_value(row.get("cp")), self._format_table_value(row.get("ct")),
+                self._format_table_value(row.get("cp_normalized")),
+                self._format_table_value(row.get("ct_normalized")),
+            )
+            self.mesh_study_tree.insert("", "end", iid=iid, values=values)
+
+    @staticmethod
+    def _format_cell_count(value: object) -> str:
+        try:
+            return f"{int(value):,}"
+        except (TypeError, ValueError):
+            return "—"
+
+    @staticmethod
+    def _format_seconds(value: object) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return "—"
+        return f"{number:.1f}" if math.isfinite(number) else "—"
+
+    def _show_mesh_study_selection(self, _event: object | None = None) -> None:
+        """Show selected candidate's full mesh controls and solver summary."""
+        selected = self.mesh_study_tree.selection()
+        row = next((item for index, item in enumerate(self.mesh_study_rows, 1)
+                    if str(item.get("id", index)) in selected), None)
+        self.mesh_study_details.configure(state="normal")
+        self.mesh_study_details.delete("1.0", "end")
+        if row:
+            lines = [f"Candidate {row.get('id', '—')} — {row.get('status', 'unknown')}"]
+            if row.get("error"):
+                lines.append(f"Error: {row['error']}")
+            mesh = row.get("mesh_settings", {})
+            lines.append("Mesh settings:")
+            for item in fields(MeshSettings):
+                value = mesh.get(item.name, "—")
+                lines.append(f"  {LABELS.get(item.name, item.name)}: {value}")
+            lines.append(f"Candidate folder: {row.get('candidate_dir', '—')}")
+            self.mesh_study_details.insert("1.0", "\n".join(lines))
+            self.mesh_study_copy_button.configure(state="normal" if mesh else "disabled")
+        else:
+            self.mesh_study_copy_button.configure(state="disabled")
+        self.mesh_study_details.configure(state="disabled")
+
+    def _copy_selected_mesh_settings(self) -> None:
+        """Copy the selected candidate's mesh controls into Workflow Settings."""
+        selected = self.mesh_study_tree.selection()
+        row = next((item for index, item in enumerate(self.mesh_study_rows, 1)
+                    if str(item.get("id", index)) in selected), None)
+        if not row or not row.get("mesh_settings"):
+            return
+        for name, value in row["mesh_settings"].items():
+            if ("mesh", name) in self.field_vars:
+                if name == "method" and value == "Default":
+                    value = "Default (ANSYS automatic)"
+                elif name == "cpu_cores" and value is None:
+                    value = "Program Controlled"
+                self.field_vars[("mesh", name)].set(value)
+                self.mesh_study_vars[name].set(str(value))
+        self.notebook.select(self.workflow_tab)
+        self.workflow_pages.select(self.mesh_settings_page)
+        self.status_var.set("Selected mesh controls copied to Workflow Settings; save the project to keep them.")
+
+    def _load_mesh_study_values_from_workflow(self) -> None:
+        """Refresh the study controls from current Workflow Settings fields."""
+        try:
+            config = self._read_model_from_fields()
+            self._set_mesh_study_form(config.mesh)
+            self.status_var.set("Mesh study controls loaded from Workflow Settings")
+        except Exception as error:
+            messagebox.showerror("Cannot load mesh settings", str(error))
+
+    def _read_mesh_study_settings(self) -> MeshSettings:
+        """Parse the isolated mesh-study controls into a validated dataclass."""
+        values = {}
+        defaults = MeshSettings()
+        for item in fields(MeshSettings):
+            raw = self.mesh_study_vars[item.name].get()
+            default = getattr(defaults, item.name)
+            if item.name == "method":
+                values[item.name] = "Default" if raw == "Default (ANSYS automatic)" else raw
+            elif item.name == "cpu_cores":
+                values[item.name] = None if raw == "Program Controlled" else int(raw)
+            elif isinstance(default, int):
+                values[item.name] = int(raw)
+            elif isinstance(default, float):
+                values[item.name] = float(raw)
+            else:
+                values[item.name] = str(raw)
+        return MeshSettings(**values)
 
     def _switch_design_type(self, _event: object | None = None) -> None:
         """Replace the Design-tab choices with those valid for the selected duct."""
@@ -1056,7 +1456,8 @@ class OpTurboApp(tk.Tk):
             accessibility=AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
                                                 high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get(),
                                                 candidate_marker_size=int(self.candidate_marker_size_var.get()),
-                                                outer_marker_size=int(self.outer_marker_size_var.get())), design_variables=variables,
+                                                outer_marker_size=int(self.outer_marker_size_var.get()),
+                                                table_row_spacing=int(self.table_row_spacing_var.get())), design_variables=variables,
         )
         geometry_values = {
             item.key.split(".", 1)[1]: item.value
@@ -1145,7 +1546,8 @@ class OpTurboApp(tk.Tk):
         selected = filedialog.askdirectory(title="Choose an empty or existing OpTurbo workflow folder")
         if selected:
             self.save_dir_var.set(selected)
-            self._save_project()
+            if self._save_project():
+                self._load_mesh_study_project_state()
 
     def _save_project(self) -> bool:
         if self.worker and self.worker.is_alive():
@@ -1160,7 +1562,7 @@ class OpTurboApp(tk.Tk):
             self.config_model = model
             if previous_objective != model.ga.objective:
                 self.best_fitness = float("-inf")
-                self.best_var.set(f"Best {OBJECTIVES[model.ga.objective]}: —")
+                self.best_var.set(self._best_result_text())
             self.store = ProjectStore(Path(model.save_dir))
             self.store.initialize(model)
             self._update_resume_button()
@@ -1423,12 +1825,145 @@ class OpTurboApp(tk.Tk):
             return False
         return self.store is not None
 
+    def _start_manual_mesh_study(self) -> None:
+        """Run the currently entered mesh setup once for the selected design."""
+        try:
+            config = self._read_model_from_fields()
+            panel_mesh = self._read_mesh_study_settings()
+            enabled = self._get_mesh_study_enabled()
+            mesh = self._mesh_settings_with_enabled_values(config.mesh, panel_mesh, enabled)
+            config = replace(config, mesh=mesh)
+            self._validate_positive_settings(config)
+            if not self._save_project():
+                return
+            config = replace(deepcopy(self.config_model), mesh=mesh)
+            self._save_mesh_study_form(panel_mesh, enabled)
+            self.mesh_study_progress.configure(maximum=1, value=0)
+            self._start_worker(lambda: self._mesh_study_worker(config, [mesh], enabled),
+                               "Running mesh study candidate", task="mesh_study")
+        except Exception as error:
+            messagebox.showerror("Cannot start mesh study", str(error))
+
+    def _start_automatic_mesh_study(self) -> None:
+        """Run a baseline, mesh-control screening, and space-filling sweep."""
+        try:
+            config = self._read_model_from_fields()
+            panel_mesh = self._read_mesh_study_settings()
+            enabled = self._get_mesh_study_enabled()
+            base_mesh = self._mesh_settings_with_enabled_values(config.mesh, panel_mesh, enabled)
+            count = int(self.mesh_study_count_var.get())
+            if not 1 <= count <= 100:
+                raise ValueError("Automatic sweep cases must be between 1 and 100.")
+            enabled_sizes = {name for name, is_enabled in enabled.items() if is_enabled}
+            if not enabled_sizes:
+                raise ValueError("Enable at least one mesh size variable for an automatic sweep.")
+            config = replace(config, mesh=base_mesh)
+            self._validate_positive_settings(config)
+            candidates = automatic_mesh_settings(base_mesh, count, base_mesh.method,
+                                                 enabled_fields=enabled_sizes)
+            if not self._save_project():
+                return
+            config = replace(deepcopy(self.config_model), mesh=base_mesh)
+            self._save_mesh_study_form(panel_mesh, enabled)
+            self.mesh_study_progress.configure(maximum=len(candidates), value=0)
+            self._start_worker(lambda: self._mesh_study_worker(config, candidates, enabled),
+                               f"Running automatic mesh sweep ({len(candidates)} cases)", task="mesh_study")
+        except Exception as error:
+            messagebox.showerror("Cannot start mesh study", str(error))
+
+    def _save_mesh_study_form(self, settings: MeshSettings, enabled: dict[str, bool]) -> None:
+        """Persist the isolated mesh-study form values in the selected project."""
+        if self.store is not None:
+            atomic_json(self.store.root / "mesh_study" / "settings.json", {
+                "mesh_settings": asdict(settings), "enabled_variables": enabled,
+            })
+
+    def _mesh_study_worker(
+        self, config: ProjectConfig, candidates: list[MeshSettings], enabled: dict[str, bool],
+    ) -> None:
+        """Run each mesh/Fluent case against one shared geometry document."""
+        try:
+            assert self.store is not None
+            study_root = self.store.root / "mesh_study"
+            history_path = study_root / "history.json"
+            study_root.mkdir(parents=True, exist_ok=True)
+            try:
+                saved_rows = json.loads(history_path.read_text(encoding="utf-8")).get("candidates", [])
+            except (OSError, TypeError, ValueError):
+                saved_rows = []
+            records = list(saved_rows) if isinstance(saved_rows, list) else []
+            next_id = max((int(row.get("id", 0)) for row in records), default=0) + 1
+            run_id = uuid.uuid4().hex[:10]
+            run_root = study_root / "runs" / run_id
+            runner = self._runner()
+            if config.cfd.source_initialization == "previous_candidate":
+                for previous in reversed(records):
+                    if previous.get("status") != "completed":
+                        continue
+                    candidate_path = previous.get("candidate_dir")
+                    if candidate_path:
+                        source_path = Path(candidate_path) / "04_cfd" / "fluent" / "final_ad_sources.dat"
+                        if source_path.is_file():
+                            runner.previous_candidate_sources = source_path
+                            break
+            prepared_config, scdoc = runner.prepare_mesh_study_geometry(config, run_root / "shared_geometry")
+            for index, mesh_settings in enumerate(candidates, 1):
+                if self.stop_requested.is_set():
+                    break
+                candidate_folder = run_root / f"mesh_{index:03d}"
+                candidate_config = replace(prepared_config, mesh=mesh_settings)
+                record = {
+                    "id": next_id,
+                    "run_id": run_id,
+                    "candidate_number": index,
+                    "status": "failed",
+                    "mesh_settings": asdict(mesh_settings),
+                    "enabled_mesh_variables": [name for name, is_enabled in enabled.items() if is_enabled],
+                    "candidate_dir": str(candidate_folder),
+                }
+                self.events.put(("log", f"Mesh study candidate {next_id}: meshing and CFD/BEM evaluation starting"))
+                try:
+                    result = runner.evaluate_mesh_study_candidate(candidate_config, scdoc, candidate_folder)
+                    record.update({
+                        "status": "completed",
+                        "cell_count": result.get("cell_count"),
+                        "meshing_seconds": result.get("meshing_seconds"),
+                        "fluent_solution_seconds": result.get("fluent_solution_seconds"),
+                        "candidate_seconds": result.get("candidate_seconds"),
+                        "outer_iterations": result.get("outer_iterations"),
+                        "cp": result.get("cp"),
+                        "ct": result.get("ct"),
+                        "cp_normalized": result.get("cp_normalized"),
+                        "ct_normalized": result.get("ct_normalized"),
+                    })
+                except Exception as error:
+                    record["error"] = str(error)
+                    record.update(getattr(error, "mesh_study_metrics", {}))
+                    self.events.put(("log", f"Mesh study candidate {next_id} failed: {error}"))
+                records.append(record)
+                atomic_json(history_path, {"candidates": records})
+                self.events.put(("mesh_study_result", record))
+                self.events.put(("mesh_study_progress", index))
+                next_id += 1
+            message = ("Mesh study stopped after the active case." if self.stop_requested.is_set()
+                       else "Mesh study completed.")
+            self.events.put(("done", message))
+        except Exception as error:
+            self.events.put(("error", f"Mesh study could not continue: {error}"))
+
     def _set_running(self, running: bool) -> None:
         self.single_button.configure(state="disabled" if running else "normal")
         self.start_button.configure(state="disabled" if running else "normal")
         self._update_resume_button(running)
         self.stop_button.configure(state="normal" if running else "disabled")
         self.terminate_button.configure(state="normal" if running else "disabled")
+        if hasattr(self, "mesh_study_manual_button"):
+            self.mesh_study_manual_button.configure(state="disabled" if running else "normal")
+            self.mesh_study_auto_button.configure(state="disabled" if running else "normal")
+            study_running = running and self.active_task == "mesh_study"
+            self.mesh_study_stop_button.configure(state="normal" if study_running else "disabled")
+        if not running:
+            self.active_task = None
 
     def _update_resume_button(self, running: bool = False) -> None:
         """Enable resume when the selected project has an unfinished GA run."""
@@ -1503,11 +2038,12 @@ class OpTurboApp(tk.Tk):
         self._start_worker(lambda: self._ga_worker(resume=resume),
                            "Resuming optimization" if resume else "Optimization running")
 
-    def _start_worker(self, target: Callable[[], None], status: str) -> None:
+    def _start_worker(self, target: Callable[[], None], status: str, task: str = "optimization") -> None:
         if self.worker and self.worker.is_alive():
             return
         self.stop_requested.clear()
         self.terminate_requested.clear()
+        self.active_task = task
         self._set_running(True)
         self.status_var.set(status)
         self.worker = threading.Thread(target=target, daemon=True)
@@ -1653,6 +2189,15 @@ class OpTurboApp(tk.Tk):
                     self._show_candidate(candidate["genome"])
                 elif kind == "result":
                     self._record_result(payload)  # type: ignore[arg-type]
+                elif kind == "mesh_study_result":
+                    row = payload  # type: ignore[assignment]
+                    self.mesh_study_rows.append(row)
+                    self._refresh_mesh_study_table()
+                    self.mesh_study_tree.selection_set(str(row["id"]))
+                    self.mesh_study_tree.see(str(row["id"]))
+                    self._show_mesh_study_selection()
+                elif kind == "mesh_study_progress":
+                    self.mesh_study_progress.configure(value=int(payload))
                 elif kind == "done":
                     self.status_var.set(str(payload))
                     self._append_log(str(payload))
@@ -1730,11 +2275,24 @@ class OpTurboApp(tk.Tk):
         if (status == "completed" and objective == self.config_model.ga.objective
                 and fitness > self.best_fitness):
             self.best_fitness = fitness
-            label = OBJECTIVES.get(objective, "objective")
-            self.best_var.set(f"Best {label}: {fitness:.7g}    Cp: {cp:.7g}    Ct: {ct:.7g}")
+            self.best_var.set(self._best_result_text(event))
             if self.store:
                 atomic_json(self.store.root / "best" / "best_result.json", event)
         self._refresh_plots(event)
+
+    def _best_result_text(self, event: dict | None = None) -> str:
+        """Format the best objective and identify its generation and candidate."""
+        label = OBJECTIVES.get(self.config_model.ga.objective, "objective")
+        if event is None:
+            return f"Best {label}: —"
+        fitness = float(event.get("fitness", event.get("cp", float("nan"))))
+        cp = float(event.get("cp", float("nan")))
+        ct_value = event.get("ct")
+        ct = float(ct_value) if ct_value is not None else float("nan")
+        candidate = event.get("candidate", "—")
+        generation = event.get("generation", "—")
+        return (f"Best {label}: {fitness:.7g}    Cp: {cp:.7g}    Ct: {ct:.7g}    "
+                f"Candidate {candidate}, Generation {generation}")
 
     def _show_candidate(self, genome: dict[str, float]) -> None:
         """Display the candidate currently passing through the external tools."""
@@ -1783,14 +2341,19 @@ class OpTurboApp(tk.Tk):
                     and objective == self.config_model.ga.objective
                     and fitness > self.best_fitness):
                 self.best_fitness = fitness
-                label = OBJECTIVES.get(objective, "objective")
-                self.best_var.set(f"Best {label}: {fitness:.7g}    Cp: {cp:.7g}    Ct: {ct:.7g}")
+                self.best_var.set(self._best_result_text(event))
         self._refresh_plots(self.history[-1] if self.history else {})
 
     def _refresh_plots(self, latest: dict) -> None:
         cp_values = [float(row.get("cp", row.get("fitness", 0))) for row in self.history if float(row.get("cp", row.get("fitness", -1e30))) > -1e20]
         ct_values = [float(row.get("ct", 0)) for row in self.history if row.get("ct") is not None and str(row.get("ct")) != "nan"]
-        self.performance_plot.set_series([("Cp", cp_values), ("Ct", ct_values)])
+        cp_normalized = [float(row["cp_normalized"]) for row in self.history
+                         if row.get("cp_normalized") is not None and math.isfinite(float(row["cp_normalized"]))]
+        ct_normalized = [float(row["ct_normalized"]) for row in self.history
+                         if row.get("ct_normalized") is not None and math.isfinite(float(row["ct_normalized"]))]
+        self.performance_plot.set_series([("Cp", cp_values), ("Ct", ct_values),
+                                          ("Cp normalized", cp_normalized),
+                                          ("Ct normalized", ct_normalized)])
         bem_series = []
         loss_label = "Bontempo tip × Prandtl root" if latest.get("tip_loss_model") == "bontempo2025" else "Prandtl tip × root"
         for key, label in (("a", "a"), ("a_prime", "a′"), ("loss_factor", loss_label)):
