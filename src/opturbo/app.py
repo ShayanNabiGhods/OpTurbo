@@ -854,31 +854,39 @@ class OpTurboApp(tk.Tk):
             row=count_row, column=0, columnspan=2, sticky="w", padx=4, pady=(8, 3))
         ttk.Spinbox(controls, from_=1, to=100, textvariable=self.mesh_study_count_var, width=8).grid(
             row=count_row, column=2, sticky="w", padx=4, pady=(8, 3))
+        self.mesh_study_strategy_var = tk.StringVar(value="Screening + combinations")
+        ttk.Label(controls, text="Sweep strategy").grid(
+            row=count_row + 1, column=0, columnspan=2, sticky="w", padx=4, pady=3)
+        self.mesh_study_strategy_control = ttk.Combobox(
+            controls, textvariable=self.mesh_study_strategy_var,
+            values=("Screening + combinations", "Evenly spaced"), state="readonly", width=24)
+        self.mesh_study_strategy_control.grid(
+            row=count_row + 1, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
         self.mesh_study_manual_button = ttk.Button(
             controls, text="Run this mesh setup", command=self._start_manual_mesh_study)
-        self.mesh_study_manual_button.grid(row=count_row + 1, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_manual_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         self.mesh_study_auto_button = ttk.Button(
             controls, text="Run automatic mesh sweep", command=self._start_automatic_mesh_study)
-        self.mesh_study_auto_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        self.mesh_study_auto_button.grid(row=count_row + 3, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_resume_button = ttk.Button(
             controls, text="Resume mesh study", command=self._resume_mesh_study, state="disabled")
-        self.mesh_study_resume_button.grid(row=count_row + 3, column=0, columnspan=5,
+        self.mesh_study_resume_button.grid(row=count_row + 4, column=0, columnspan=5,
                                            sticky="ew", padx=4, pady=3)
         self.mesh_study_stop_button = ttk.Button(
             controls, text="Stop after current case", command=self._stop, state="disabled")
-        self.mesh_study_stop_button.grid(row=count_row + 4, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        self.mesh_study_stop_button.grid(row=count_row + 5, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_terminate_button = ttk.Button(
             controls, text="Terminate whole process", command=self._terminate, state="disabled")
-        self.mesh_study_terminate_button.grid(row=count_row + 5, column=0, columnspan=5,
+        self.mesh_study_terminate_button.grid(row=count_row + 6, column=0, columnspan=5,
                                               sticky="ew", padx=4, pady=3)
         self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
-        self.mesh_study_progress.grid(row=count_row + 6, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
-        ttk.Label(controls, text="The automatic sweep screens low and high values for each mesh control, then samples combinations.",
+        self.mesh_study_progress.grid(row=count_row + 7, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
+        ttk.Label(controls, text="Screening tests low/high values then combinations; evenly spaced sweeps all enabled values from minimum to maximum.",
                   style="Subtitle.TLabel", wraplength=280, justify="left").grid(
-            row=count_row + 7, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
+            row=count_row + 8, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
         ttk.Button(controls, text="Load mesh values from Workflow Settings",
                    command=self._load_mesh_study_values_from_workflow).grid(
-            row=count_row + 8, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+            row=count_row + 9, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         for column in (2, 3, 4):
             controls.columnconfigure(column, weight=1, uniform="mesh_study_values")
 
@@ -1352,6 +1360,9 @@ class OpTurboApp(tk.Tk):
                         saved_enabled = payload.get("enabled_variables", {})
                         enabled.update({name: bool(value) for name, value in saved_enabled.items()
                                         if name in enabled})
+                        saved_strategy = payload.get("sweep_strategy", "Screening + combinations")
+                        if saved_strategy in {"Screening + combinations", "Evenly spaced"}:
+                            self.mesh_study_strategy_var.set(saved_strategy)
                         saved_bounds = payload.get("variable_bounds", {})
                         bounds = mesh_variable_bounds(settings)
                         for name, bound in saved_bounds.items():
@@ -2054,7 +2065,9 @@ class OpTurboApp(tk.Tk):
             config = replace(config, mesh=base_mesh)
             self._validate_positive_settings(config)
             candidates = automatic_mesh_settings(base_mesh, count, base_mesh.method,
-                                                 enabled_fields=enabled_sizes, bounds=bounds)
+                                                 enabled_fields=enabled_sizes, bounds=bounds,
+                                                 strategy=("even" if self.mesh_study_strategy_var.get() == "Evenly spaced"
+                                                           else "screening"))
             if not self._save_project():
                 return
             config = replace(deepcopy(self.config_model), mesh=base_mesh)
@@ -2086,6 +2099,7 @@ class OpTurboApp(tk.Tk):
             "configuration": config.to_dict(),
             "candidates": [asdict(candidate) for candidate in candidates],
             "enabled_variables": enabled,
+            "sweep_strategy": self.mesh_study_strategy_var.get(),
         }
         atomic_json(state_path, state)
         self.mesh_study_progress.configure(maximum=len(candidates), value=0)
@@ -2123,6 +2137,9 @@ class OpTurboApp(tk.Tk):
                 return
             candidates = [MeshSettings(**item) for item in state["candidates"]]
             enabled = {name: bool(value) for name, value in state.get("enabled_variables", {}).items()}
+            saved_strategy = state.get("sweep_strategy", "Screening + combinations")
+            if saved_strategy in {"Screening + combinations", "Evenly spaced"}:
+                self.mesh_study_strategy_var.set(saved_strategy)
             if not candidates:
                 raise ValueError("The saved mesh study contains no candidate settings.")
             history_path = self.store.root / "mesh_study" / "history.json"
@@ -2147,6 +2164,7 @@ class OpTurboApp(tk.Tk):
         if self.store is not None:
             atomic_json(self.store.root / "mesh_study" / "settings.json", {
                 "mesh_settings": asdict(settings), "enabled_variables": enabled,
+                "sweep_strategy": self.mesh_study_strategy_var.get(),
                 "variable_bounds": {
                     name: {"minimum": self.mesh_study_min_vars[name].get(),
                            "maximum": self.mesh_study_max_vars[name].get()}

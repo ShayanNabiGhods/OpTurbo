@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import math
 
 from .models import MeshSettings
 
@@ -44,8 +45,9 @@ def mesh_variable_bounds(settings: MeshSettings) -> dict[str, tuple[float, float
 def automatic_mesh_settings(
     base: MeshSettings, count: int, method: str, enabled_fields: set[str] | None = None,
     bounds: dict[str, tuple[float, float]] | None = None,
+    strategy: str = "screening",
 ) -> list[MeshSettings]:
-    """Build a baseline, one-factor screening cases, then space-filling cases."""
+    """Build automatic mesh cases using screening or evenly spaced sweep strategy."""
     if count < 1:
         raise ValueError("An automatic mesh sweep must include at least one case.")
     selected_method = "Default" if method == "Default (ANSYS automatic)" else method
@@ -53,6 +55,23 @@ def automatic_mesh_settings(
     candidates = [baseline]
     bounds = bounds or mesh_variable_bounds(base)
     variable_names = [name for name in _FIELDS if enabled_fields is None or name in enabled_fields]
+
+    if strategy == "even":
+        candidates = []
+        for index in range(count):
+            fraction = 0.5 if count == 1 else index / (count - 1)
+            values = {}
+            for name in variable_names:
+                low, high = bounds[name]
+                if name == "inflation_layers":
+                    value = high - fraction * (high - low)
+                    values[name] = math.ceil(value)
+                else:
+                    values[name] = low + fraction * (high - low)
+            candidates.append(replace(baseline, **values))
+        return candidates
+    if strategy != "screening":
+        raise ValueError(f"Unknown automatic mesh sweep strategy: {strategy}")
 
     # Screen each variable at its low and high range while holding others fixed.
     for name in variable_names:
