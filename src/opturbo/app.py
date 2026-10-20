@@ -28,7 +28,8 @@ from .models import (
     default_design_variables,
 )
 from .optimizer import GeneticAlgorithm
-from .mesh_study import automatic_mesh_settings
+from .mesh_study import automatic_mesh_settings, mesh_variable_bounds
+from .design_import import read_design_snapshot
 from .objectives import OBJECTIVES, objective_value
 from .parsec import lower_profile, nested_parameters, profile, validate_lower_profile, validate_profile
 from .pipeline import PipelineRunner
@@ -447,6 +448,7 @@ class OpTurboApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        self.numeric_entry_validate = (self.register(self._validate_numeric_entry), "%P")
         self.title("OpTurbo V0.0.1 — DAWT Optimization")
         self.geometry("1280x820")
         self.minsize(1050, 680)
@@ -463,8 +465,11 @@ class OpTurboApp(tk.Tk):
         self.mesh_study_rows: list[dict] = []
         self.mesh_study_vars: dict[str, tk.StringVar] = {}
         self.mesh_study_controls: dict[str, ttk.Widget] = {}
+        self.mesh_study_bound_controls: dict[str, tuple[ttk.Widget, ttk.Widget]] = {}
         self.mesh_study_labels: dict[str, ttk.Label] = {}
         self.mesh_study_enabled: dict[str, tk.BooleanVar] = {}
+        self.mesh_study_min_vars: dict[str, tk.StringVar] = {}
+        self.mesh_study_max_vars: dict[str, tk.StringVar] = {}
         self.active_task: str | None = None
         self.history_lock = threading.Lock()
         self.best_fitness = float("-inf")
@@ -480,6 +485,24 @@ class OpTurboApp(tk.Tk):
         self._load_model_into_fields()
         self._update_resume_button()
         self.after(100, self._poll_events)
+
+    @staticmethod
+    def _validate_numeric_entry(proposed: str) -> bool:
+        """Limit editable numeric text to five fractional digits, including pasted text."""
+        return re.fullmatch(r"[+-]?(?:(?:\d+(?:\.\d{0,5})?|\.\d{0,5})(?:[eE][+-]?\d*)?)?", proposed) is not None
+
+    @staticmethod
+    def _format_user_number(value: object) -> str:
+        """Format displayed floating-point settings with at most five decimal places."""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, int):
+            return str(value)
+        number = float(value)
+        formatted = f"{number:.5f}".rstrip("0").rstrip(".")
+        if formatted in {"", "-0", "+0", "0"} and number != 0.0:
+            return f"{number:.5g}"
+        return formatted or "0"
 
     @staticmethod
     def _theme_palette(settings: AccessibilitySettings) -> dict[str, str]:
@@ -684,6 +707,7 @@ class OpTurboApp(tk.Tk):
         self.parsec_body = self.parsec_scroll.body
         controls = ttk.Frame(left)
         controls.pack(fill="x", pady=8)
+        ttk.Button(controls, text="Load design…", command=self._load_design_settings).pack(side="left", padx=(0, 6))
         ttk.Button(controls, text="Update preview", command=self._update_preview_from_fields).pack(side="left")
         ttk.Button(controls, text="Select all", command=lambda: self._select_parsec(True)).pack(side="left", padx=6)
         ttk.Button(controls, text="Clear all", command=lambda: self._select_parsec(False)).pack(side="left")
@@ -779,60 +803,76 @@ class OpTurboApp(tk.Tk):
         review = ttk.Frame(pane, padding=(6, 0, 0, 0))
         pane.add(controls_scroll, weight=1)
         pane.add(review, weight=3)
+        self.mesh_study_vars["method"] = tk.StringVar()
         method_label = ttk.Label(controls, text="Mesh method")
         method_label.grid(row=0, column=1, sticky="w", padx=4, pady=3)
         self.mesh_study_labels["method"] = method_label
-        self.mesh_study_vars["method"] = tk.StringVar()
         method = ttk.Combobox(controls, textvariable=self.mesh_study_vars["method"], state="readonly",
                               values=("Default (ANSYS automatic)", "Quad", "Tri", "MultiZone"), width=25)
-        method.grid(row=0, column=2, sticky="ew", padx=4, pady=3)
+        method.grid(row=0, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
         self.mesh_study_controls["method"] = method
-        for row, item in enumerate(fields(MeshSettings), 1):
+        self.mesh_study_vars["cpu_cores"] = tk.StringVar()
+        cpu_label = ttk.Label(controls, text=LABELS.get("cpu_cores", "CPU cores"))
+        cpu_label.grid(row=1, column=1, sticky="w", padx=4, pady=3)
+        self.mesh_study_labels["cpu_cores"] = cpu_label
+        cpu = ttk.Combobox(controls, textvariable=self.mesh_study_vars["cpu_cores"],
+                           values=CPU_CORE_CHOICES, state="readonly", width=18)
+        cpu.grid(row=1, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
+        self.mesh_study_controls["cpu_cores"] = cpu
+        for column, heading in ((2, "Minimum"), (3, "Current"), (4, "Maximum")):
+            ttk.Label(controls, text=heading, style="Subtitle.TLabel").grid(
+                row=2, column=column, sticky="w", padx=4, pady=(8, 2))
+        size_fields = [item for item in fields(MeshSettings) if item.name in MESH_STUDY_SIZE_FIELDS]
+        defaults = mesh_variable_bounds(MeshSettings())
+        for row, item in enumerate(size_fields, 3):
             name = item.name
-            if name == "method":
-                continue
-            if name in MESH_STUDY_SIZE_FIELDS:
-                self.mesh_study_enabled[name] = tk.BooleanVar(value=True)
+            self.mesh_study_enabled[name] = tk.BooleanVar(value=True)
             self.mesh_study_vars[name] = tk.StringVar()
-            if name in self.mesh_study_enabled:
-                ttk.Checkbutton(controls, variable=self.mesh_study_enabled[name],
-                                command=self._refresh_mesh_study_controls).grid(
-                    row=row, column=0, sticky="w", padx=4, pady=3)
+            self.mesh_study_min_vars[name] = tk.StringVar(value=self._format_user_number(defaults[name][0]))
+            self.mesh_study_max_vars[name] = tk.StringVar(value=self._format_user_number(defaults[name][1]))
+            ttk.Checkbutton(controls, variable=self.mesh_study_enabled[name],
+                            command=self._refresh_mesh_study_controls).grid(
+                row=row, column=0, sticky="w", padx=4, pady=3)
             label = ttk.Label(controls, text=LABELS.get(name, name.replace("_", " ").title()))
             label.grid(row=row, column=1, sticky="w", padx=4, pady=3)
             self.mesh_study_labels[name] = label
-            if name == "cpu_cores":
-                widget = ttk.Combobox(controls, textvariable=self.mesh_study_vars[name],
-                                      values=CPU_CORE_CHOICES, state="readonly", width=23)
-            else:
-                widget = ttk.Entry(controls, textvariable=self.mesh_study_vars[name], width=25)
-            widget.grid(row=row, column=2, sticky="ew", padx=4, pady=3)
+            widget = ttk.Entry(controls, textvariable=self.mesh_study_vars[name], width=8,
+                               validate="key", validatecommand=self.numeric_entry_validate)
+            widget.grid(row=row, column=3, sticky="ew", padx=3, pady=3)
             self.mesh_study_controls[name] = widget
+            minimum = ttk.Entry(controls, textvariable=self.mesh_study_min_vars[name], width=8,
+                                validate="key", validatecommand=self.numeric_entry_validate)
+            minimum.grid(row=row, column=2, sticky="ew", padx=3, pady=3)
+            maximum = ttk.Entry(controls, textvariable=self.mesh_study_max_vars[name], width=8,
+                                validate="key", validatecommand=self.numeric_entry_validate)
+            maximum.grid(row=row, column=4, sticky="ew", padx=3, pady=3)
+            self.mesh_study_bound_controls[name] = (minimum, maximum)
         self._refresh_mesh_study_controls()
         self.mesh_study_count_var = tk.StringVar(value="20")
-        count_row = len(fields(MeshSettings)) + 1
+        count_row = len(size_fields) + 3
         ttk.Label(controls, text="Automatic sweep cases").grid(
             row=count_row, column=0, columnspan=2, sticky="w", padx=4, pady=(8, 3))
         ttk.Spinbox(controls, from_=1, to=100, textvariable=self.mesh_study_count_var, width=8).grid(
             row=count_row, column=2, sticky="w", padx=4, pady=(8, 3))
         self.mesh_study_manual_button = ttk.Button(
             controls, text="Run this mesh setup", command=self._start_manual_mesh_study)
-        self.mesh_study_manual_button.grid(row=count_row + 1, column=0, columnspan=3, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_manual_button.grid(row=count_row + 1, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         self.mesh_study_auto_button = ttk.Button(
             controls, text="Run automatic mesh sweep", command=self._start_automatic_mesh_study)
-        self.mesh_study_auto_button.grid(row=count_row + 2, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        self.mesh_study_auto_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_stop_button = ttk.Button(
             controls, text="Stop after current case", command=self._stop, state="disabled")
-        self.mesh_study_stop_button.grid(row=count_row + 3, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        self.mesh_study_stop_button.grid(row=count_row + 3, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
-        self.mesh_study_progress.grid(row=count_row + 4, column=0, columnspan=3, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_progress.grid(row=count_row + 4, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         ttk.Label(controls, text="The automatic sweep screens low and high values for each mesh control, then samples combinations.",
                   style="Subtitle.TLabel", wraplength=280, justify="left").grid(
-            row=count_row + 5, column=0, columnspan=3, sticky="w", padx=4, pady=(3, 8))
+            row=count_row + 5, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
         ttk.Button(controls, text="Load mesh values from Workflow Settings",
                    command=self._load_mesh_study_values_from_workflow).grid(
-            row=count_row + 6, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
-        controls.columnconfigure(2, weight=1)
+            row=count_row + 6, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        for column in (2, 3, 4):
+            controls.columnconfigure(column, weight=1, uniform="mesh_study_values")
 
         ttk.Label(review, text="Mesh study candidates", style="Title.TLabel").pack(anchor="w", pady=(0, 4))
         table_frame = ttk.Frame(review)
@@ -898,7 +938,8 @@ class OpTurboApp(tk.Tk):
                     control = ttk.Combobox(group, textvariable=variable, values=CFD_CHOICE_VALUES[name],
                                             state="readonly", width=24)
                 else:
-                    control = ttk.Entry(group, textvariable=variable, width=24)
+                    control = ttk.Entry(group, textvariable=variable, width=24,
+                                        validate="key", validatecommand=self.numeric_entry_validate)
                 control.grid(row=row * 3 + 1, column=0, sticky="w", pady=3)
                 ttk.Label(group, text=FIELD_HELP[name], style="Subtitle.TLabel", wraplength=330,
                           justify="left").grid(row=row * 3 + 2, column=0, sticky="w", pady=(0, 8))
@@ -1114,7 +1155,9 @@ class OpTurboApp(tk.Tk):
             elif isinstance(default, bool):
                 widget = ttk.Checkbutton(parent, variable=variable)
             else:
-                widget = ttk.Entry(parent, textvariable=variable, width=24)
+                entry_options = {"validate": "key", "validatecommand": self.numeric_entry_validate} \
+                    if isinstance(default, (int, float)) and not isinstance(default, bool) else {}
+                widget = ttk.Entry(parent, textvariable=variable, width=24, **entry_options)
             if section == "cfd" and item.name in {"bontempo_g_a", "bontempo_g_b", "bontempo_g_c"}:
                 self.bontempo_controls.append(widget)
             if section == "cfd" and item.name == "previous_source_weight":
@@ -1146,15 +1189,16 @@ class OpTurboApp(tk.Tk):
             ttk.Label(self.parsec_body, text=text).grid(row=0, column=column, sticky="w", padx=3)
         for row, spec in enumerate(self.config_model.design_variables, start=1):
             enabled = tk.BooleanVar(value=spec.optimize)
-            value = tk.StringVar(value=str(spec.value))
-            minimum = tk.StringVar(value=str(spec.minimum))
-            maximum = tk.StringVar(value=str(spec.maximum))
+            value = tk.StringVar(value=self._format_user_number(spec.value))
+            minimum = tk.StringVar(value=self._format_user_number(spec.minimum))
+            maximum = tk.StringVar(value=self._format_user_number(spec.maximum))
             use = ttk.Checkbutton(self.parsec_body, variable=enabled)
             use.grid(row=row, column=0, padx=3, pady=3)
             label = ttk.Label(self.parsec_body, text=spec.label)
-            value_entry = ttk.Entry(self.parsec_body, textvariable=value, width=11)
-            minimum_entry = ttk.Entry(self.parsec_body, textvariable=minimum, width=11)
-            maximum_entry = ttk.Entry(self.parsec_body, textvariable=maximum, width=11)
+            numeric_options = {"validate": "key", "validatecommand": self.numeric_entry_validate}
+            value_entry = ttk.Entry(self.parsec_body, textvariable=value, width=11, **numeric_options)
+            minimum_entry = ttk.Entry(self.parsec_body, textvariable=minimum, width=11, **numeric_options)
+            maximum_entry = ttk.Entry(self.parsec_body, textvariable=maximum, width=11, **numeric_options)
             label.grid(row=row, column=1, sticky="w", padx=3)
             minimum_entry.grid(row=row, column=2, padx=3)
             value_entry.grid(row=row, column=3, padx=3)
@@ -1193,6 +1237,8 @@ class OpTurboApp(tk.Tk):
                     value = "Program Controlled" if value is None else str(value)
                 elif section == "mesh" and item.name == "method" and value == "Default":
                     value = "Default (ANSYS automatic)"
+                elif isinstance(value, float):
+                    value = self._format_user_number(value)
                 variable.set(value)
         self.design_type_var.set(self.config_model.geometry.design_type)
         self.theme_var.set(self.config_model.accessibility.theme)
@@ -1221,6 +1267,8 @@ class OpTurboApp(tk.Tk):
                              if is_enabled else "disabled")
             self.mesh_study_labels[name].configure(
                 foreground=self.palette["text"] if is_enabled else self.palette["muted"])
+            for bound_control in self.mesh_study_bound_controls.get(name, ()):
+                bound_control.configure(state="normal" if is_enabled else "disabled")
 
     def _resize_mesh_study_columns(self, event: object) -> None:
         """Distribute mesh-study table columns across its available width."""
@@ -1242,7 +1290,10 @@ class OpTurboApp(tk.Tk):
                 values[item.name] = getattr(panel_settings, item.name)
         return MeshSettings(**values)
 
-    def _set_mesh_study_form(self, settings: MeshSettings, enabled: dict[str, bool] | None = None) -> None:
+    def _set_mesh_study_form(
+        self, settings: MeshSettings, enabled: dict[str, bool] | None = None,
+        bounds: dict[str, tuple[object, object]] | None = None,
+    ) -> None:
         """Display one mesh configuration in the mesh-study controls."""
         for item in fields(MeshSettings):
             value = getattr(settings, item.name)
@@ -1250,14 +1301,21 @@ class OpTurboApp(tk.Tk):
                 value = "Default (ANSYS automatic)"
             elif item.name == "cpu_cores" and value is None:
                 value = "Program Controlled"
-            self.mesh_study_vars[item.name].set(str(value))
+            self.mesh_study_vars[item.name].set(
+                self._format_user_number(value) if isinstance(value, float) else str(value))
             if enabled is not None and item.name in enabled:
                 self.mesh_study_enabled[item.name].set(enabled.get(item.name, True))
+        if bounds is not None:
+            for name, (minimum, maximum) in bounds.items():
+                if name in self.mesh_study_min_vars:
+                    self.mesh_study_min_vars[name].set(self._format_user_number(minimum))
+                    self.mesh_study_max_vars[name].set(self._format_user_number(maximum))
         self._refresh_mesh_study_controls()
 
     def _load_mesh_study_project_state(self) -> None:
         """Load saved mesh-study cases and per-project study controls."""
         settings = self.config_model.mesh
+        bounds = None
         enabled = {name: True for name in MESH_STUDY_SIZE_FIELDS}
         rows = []
         if self.store is not None:
@@ -1272,18 +1330,31 @@ class OpTurboApp(tk.Tk):
                         saved_enabled = payload.get("enabled_variables", {})
                         enabled.update({name: bool(value) for name, value in saved_enabled.items()
                                         if name in enabled})
+                        saved_bounds = payload.get("variable_bounds", {})
+                        bounds = mesh_variable_bounds(settings)
+                        for name, bound in saved_bounds.items():
+                            if name not in bounds:
+                                continue
+                            if isinstance(bound, dict):
+                                bounds[name] = (bound.get("minimum", bounds[name][0]),
+                                                bound.get("maximum", bounds[name][1]))
+                            elif isinstance(bound, (list, tuple)) and len(bound) == 2:
+                                bounds[name] = (bound[0], bound[1])
                     else:
                         # Accept settings files created before per-variable toggles existed.
                         settings = MeshSettings(**payload)
             except (OSError, TypeError, ValueError):
                 settings = self.config_model.mesh
+                bounds = None
             try:
                 if history_path.is_file():
                     rows = json.loads(history_path.read_text(encoding="utf-8")).get("candidates", [])
             except (OSError, TypeError, ValueError):
                 rows = []
         self.mesh_study_rows = rows if isinstance(rows, list) else []
-        self._set_mesh_study_form(settings, enabled)
+        if bounds is None:
+            bounds = mesh_variable_bounds(settings)
+        self._set_mesh_study_form(settings, enabled, bounds)
         self._refresh_mesh_study_table()
 
     def _refresh_mesh_study_table(self) -> None:
@@ -1359,7 +1430,8 @@ class OpTurboApp(tk.Tk):
                 elif name == "cpu_cores" and value is None:
                     value = "Program Controlled"
                 self.field_vars[("mesh", name)].set(value)
-                self.mesh_study_vars[name].set(str(value))
+                self.mesh_study_vars[name].set(
+                    self._format_user_number(value) if isinstance(value, float) else str(value))
         self.notebook.select(self.workflow_tab)
         self.workflow_pages.select(self.mesh_settings_page)
         self.status_var.set("Selected mesh controls copied to Workflow Settings; save the project to keep them.")
@@ -1392,6 +1464,34 @@ class OpTurboApp(tk.Tk):
                 values[item.name] = str(raw)
         return MeshSettings(**values)
 
+    def _read_mesh_study_bounds(
+        self, names: set[str] | None = None,
+    ) -> dict[str, tuple[float | int, float | int]]:
+        """Parse and validate the user-entered automatic-sweep ranges."""
+        bounds: dict[str, tuple[float | int, float | int]] = {}
+        for name in (MESH_STUDY_SIZE_FIELDS if names is None else names):
+            minimum_raw = self.mesh_study_min_vars[name].get().strip()
+            maximum_raw = self.mesh_study_max_vars[name].get().strip()
+            try:
+                if name == "inflation_layers":
+                    minimum, maximum = int(minimum_raw), int(maximum_raw)
+                else:
+                    minimum, maximum = float(minimum_raw), float(maximum_raw)
+            except ValueError as error:
+                label = LABELS.get(name, name.replace("_", " "))
+                raise ValueError(f"Enter numeric minimum and maximum values for {label}.") from error
+            if not math.isfinite(minimum) or not math.isfinite(maximum) or minimum >= maximum:
+                label = LABELS.get(name, name.replace("_", " "))
+                raise ValueError(f"{label}: minimum must be finite and less than maximum.")
+            if name == "growth_rate":
+                if minimum <= 1.0:
+                    raise ValueError("Growth rate minimum must be greater than 1.0.")
+            elif minimum <= 0:
+                label = LABELS.get(name, name.replace("_", " "))
+                raise ValueError(f"{label}: minimum must be greater than zero.")
+            bounds[name] = (minimum, maximum)
+        return bounds
+
     def _switch_design_type(self, _event: object | None = None) -> None:
         """Replace the Design-tab choices with those valid for the selected duct."""
         if self.worker and self.worker.is_alive():
@@ -1417,6 +1517,69 @@ class OpTurboApp(tk.Tk):
         self.config_model.design_variables = next_rows[:]
         self._make_parsec_rows()
         self._draw_design()
+
+    def _load_design_settings(self) -> None:
+        """Load a design from a best-result snapshot or geometry-settings JSON."""
+        if self.worker and self.worker.is_alive():
+            messagebox.showwarning("Run active", "Stop the active run before loading a different design.")
+            return
+        selected_path = filedialog.askopenfilename(
+            title="Load design settings",
+            filetypes=(("OpTurbo design settings", "*.json"), ("JSON files", "*.json"),
+                       ("All files", "*.*")),
+        )
+        if not selected_path:
+            return
+        path = Path(selected_path)
+        try:
+            snapshot = read_design_snapshot(path, self.config_model.geometry.design_type)
+            geometry_data = snapshot.geometry
+            variable_values = snapshot.variables
+            design_type = snapshot.design_type
+
+            if design_type != self.config_model.geometry.design_type:
+                self.design_type_var.set(design_type)
+                self._switch_design_type()
+
+            geometry_updates = {}
+            for item in fields(GeometrySettings):
+                if item.name == "design_type":
+                    continue
+                raw_value = variable_values.get(f"geometry.{item.name}", geometry_data.get(item.name))
+                if raw_value is None:
+                    continue
+                if isinstance(getattr(self.config_model.geometry, item.name), bool):
+                    raw_value = (raw_value if isinstance(raw_value, bool)
+                                 else str(raw_value).strip().lower() in {"true", "1", "yes"})
+                elif isinstance(getattr(self.config_model.geometry, item.name), int):
+                    raw_value = int(raw_value)
+                elif isinstance(getattr(self.config_model.geometry, item.name), float):
+                    raw_value = float(raw_value)
+                    raw_value = float(self._format_user_number(raw_value))
+                geometry_updates[item.name] = raw_value
+                self.field_vars[("geometry", item.name)].set(raw_value)
+            geometry_updates["design_type"] = design_type
+            self.config_model.geometry = replace(self.config_model.geometry, **geometry_updates)
+
+            loaded_variables = []
+            for spec in self.config_model.design_variables:
+                raw_value = variable_values.get(spec.key)
+                if raw_value is None:
+                    loaded_variables.append(spec)
+                    continue
+                value = float(raw_value)
+                if not math.isfinite(value):
+                    raise ValueError(f"{spec.label} must be a finite number.")
+                loaded_variables.append(replace(spec, value=value,
+                                                minimum=min(spec.minimum, value),
+                                                maximum=max(spec.maximum, value)))
+            self.config_model.design_variables = loaded_variables
+            self.design_variable_sets[design_type] = loaded_variables[:]
+            self._make_parsec_rows()
+            self._draw_design()
+            self.status_var.set(f"Design loaded from {path.name}")
+        except (OSError, json.JSONDecodeError, TypeError, ValueError, KeyError) as error:
+            messagebox.showerror("Cannot load design", str(error))
 
     def _read_model_from_fields(self) -> ProjectConfig:
         def build(section: str, cls: type):
@@ -1857,10 +2020,11 @@ class OpTurboApp(tk.Tk):
             enabled_sizes = {name for name, is_enabled in enabled.items() if is_enabled}
             if not enabled_sizes:
                 raise ValueError("Enable at least one mesh size variable for an automatic sweep.")
+            bounds = self._read_mesh_study_bounds(enabled_sizes)
             config = replace(config, mesh=base_mesh)
             self._validate_positive_settings(config)
             candidates = automatic_mesh_settings(base_mesh, count, base_mesh.method,
-                                                 enabled_fields=enabled_sizes)
+                                                 enabled_fields=enabled_sizes, bounds=bounds)
             if not self._save_project():
                 return
             config = replace(deepcopy(self.config_model), mesh=base_mesh)
@@ -1876,6 +2040,11 @@ class OpTurboApp(tk.Tk):
         if self.store is not None:
             atomic_json(self.store.root / "mesh_study" / "settings.json", {
                 "mesh_settings": asdict(settings), "enabled_variables": enabled,
+                "variable_bounds": {
+                    name: {"minimum": self.mesh_study_min_vars[name].get(),
+                           "maximum": self.mesh_study_max_vars[name].get()}
+                    for name in MESH_STUDY_SIZE_FIELDS
+                },
             })
 
     def _mesh_study_worker(

@@ -24,7 +24,7 @@ def _halton(index: int, base: int) -> float:
     return result
 
 
-def _bounds(settings: MeshSettings) -> dict[str, tuple[float, float]]:
+def mesh_variable_bounds(settings: MeshSettings) -> dict[str, tuple[float, float]]:
     """Build useful screening ranges around the current mesh settings."""
     return {
         "global_size_cm": (settings.global_size_cm * 0.6, settings.global_size_cm * 1.5),
@@ -43,6 +43,7 @@ def _bounds(settings: MeshSettings) -> dict[str, tuple[float, float]]:
 
 def automatic_mesh_settings(
     base: MeshSettings, count: int, method: str, enabled_fields: set[str] | None = None,
+    bounds: dict[str, tuple[float, float]] | None = None,
 ) -> list[MeshSettings]:
     """Build a baseline, one-factor screening cases, then space-filling cases."""
     if count < 1:
@@ -50,7 +51,7 @@ def automatic_mesh_settings(
     selected_method = "Default" if method == "Default (ANSYS automatic)" else method
     baseline = replace(base, method=selected_method)
     candidates = [baseline]
-    bounds = _bounds(base)
+    bounds = bounds or mesh_variable_bounds(base)
     variable_names = [name for name in _FIELDS if enabled_fields is None or name in enabled_fields]
 
     # Screen each variable at its low and high range while holding others fixed.
