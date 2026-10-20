@@ -860,17 +860,25 @@ class OpTurboApp(tk.Tk):
         self.mesh_study_auto_button = ttk.Button(
             controls, text="Run automatic mesh sweep", command=self._start_automatic_mesh_study)
         self.mesh_study_auto_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        self.mesh_study_resume_button = ttk.Button(
+            controls, text="Resume mesh study", command=self._resume_mesh_study, state="disabled")
+        self.mesh_study_resume_button.grid(row=count_row + 3, column=0, columnspan=5,
+                                           sticky="ew", padx=4, pady=3)
         self.mesh_study_stop_button = ttk.Button(
             controls, text="Stop after current case", command=self._stop, state="disabled")
-        self.mesh_study_stop_button.grid(row=count_row + 3, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        self.mesh_study_stop_button.grid(row=count_row + 4, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        self.mesh_study_terminate_button = ttk.Button(
+            controls, text="Terminate whole process", command=self._terminate, state="disabled")
+        self.mesh_study_terminate_button.grid(row=count_row + 5, column=0, columnspan=5,
+                                              sticky="ew", padx=4, pady=3)
         self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
-        self.mesh_study_progress.grid(row=count_row + 4, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_progress.grid(row=count_row + 6, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         ttk.Label(controls, text="The automatic sweep screens low and high values for each mesh control, then samples combinations.",
                   style="Subtitle.TLabel", wraplength=280, justify="left").grid(
-            row=count_row + 5, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
+            row=count_row + 7, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
         ttk.Button(controls, text="Load mesh values from Workflow Settings",
                    command=self._load_mesh_study_values_from_workflow).grid(
-            row=count_row + 6, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+            row=count_row + 8, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         for column in (2, 3, 4):
             controls.columnconfigure(column, weight=1, uniform="mesh_study_values")
 
@@ -967,10 +975,13 @@ class OpTurboApp(tk.Tk):
         pane.pack(fill="both", expand=True)
         settings_scroll = ScrollableFrame(pane)
         settings = settings_scroll.body
+        settings.configure(padding=(12, 12, 12, 8))
+        self.optimization_settings_body = settings
+        settings.bind("<Configure>", self._resize_optimization_help, add="+")
         results = ttk.Frame(pane, padding=(12, 0))
         pane.add(settings_scroll, weight=1)
         pane.add(results, weight=2)
-        self._add_dataclass_form(settings, "ga", GaSettings)
+        self._add_dataclass_form(settings, "ga", GaSettings, inline_help=False)
         actions = ttk.Frame(settings)
         actions.grid(row=50, column=0, columnspan=3, sticky="ew", pady=16)
         self.single_button = ttk.Button(actions, text="Evaluate current design", command=self._run_single)
@@ -1005,6 +1016,17 @@ class OpTurboApp(tk.Tk):
         self.best_var = tk.StringVar(
             value=f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         ttk.Label(results, textvariable=self.best_var, style="Title.TLabel").pack(anchor="w", pady=10)
+
+    def _resize_optimization_help(self, event: tk.Event | None = None) -> None:
+        """Wrap optimization help to its actual column width and preserve a right margin."""
+        body = getattr(self, "optimization_settings_body", None)
+        if body is None:
+            return
+        width = event.width if event is not None else body.winfo_width()
+        for widget in body.winfo_children():
+            if isinstance(widget, ttk.Label) and widget.cget("style") == "Subtitle.TLabel":
+                available = width - widget.winfo_x() - 12
+                widget.configure(wraplength=max(100, available))
 
     def _build_monitor_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=8)
@@ -1356,6 +1378,16 @@ class OpTurboApp(tk.Tk):
             bounds = mesh_variable_bounds(settings)
         self._set_mesh_study_form(settings, enabled, bounds)
         self._refresh_mesh_study_table()
+        self._update_mesh_study_resume_button()
+
+    def _update_mesh_study_resume_button(self, running: bool = False) -> None:
+        """Enable resume only when this project has an unfinished saved study."""
+        button = getattr(self, "mesh_study_resume_button", None)
+        if button is None:
+            return
+        state = self._read_mesh_study_run_state()
+        resumable = bool(state and state.get("status") != "completed")
+        button.configure(state="normal" if resumable and not running else "disabled")
 
     def _refresh_mesh_study_table(self) -> None:
         """Rebuild the mesh-study summary table from persisted candidate rows."""
@@ -2001,9 +2033,7 @@ class OpTurboApp(tk.Tk):
                 return
             config = replace(deepcopy(self.config_model), mesh=mesh)
             self._save_mesh_study_form(panel_mesh, enabled)
-            self.mesh_study_progress.configure(maximum=1, value=0)
-            self._start_worker(lambda: self._mesh_study_worker(config, [mesh], enabled),
-                               "Running mesh study candidate", task="mesh_study")
+            self._begin_mesh_study(config, [mesh], enabled, "Running mesh study candidate")
         except Exception as error:
             messagebox.showerror("Cannot start mesh study", str(error))
 
@@ -2029,11 +2059,88 @@ class OpTurboApp(tk.Tk):
                 return
             config = replace(deepcopy(self.config_model), mesh=base_mesh)
             self._save_mesh_study_form(panel_mesh, enabled)
-            self.mesh_study_progress.configure(maximum=len(candidates), value=0)
-            self._start_worker(lambda: self._mesh_study_worker(config, candidates, enabled),
-                               f"Running automatic mesh sweep ({len(candidates)} cases)", task="mesh_study")
+            self._begin_mesh_study(config, candidates, enabled,
+                                   f"Running automatic mesh sweep ({len(candidates)} cases)")
         except Exception as error:
             messagebox.showerror("Cannot start mesh study", str(error))
+
+    def _mesh_study_state_path(self) -> Path | None:
+        return self.store.root / "mesh_study" / "run_state.json" if self.store is not None else None
+
+    def _begin_mesh_study(self, config: ProjectConfig, candidates: list[MeshSettings],
+                          enabled: dict[str, bool], status: str) -> None:
+        """Save a reproducible candidate plan before starting a new mesh study."""
+        state_path = self._mesh_study_state_path()
+        if state_path is None:
+            raise RuntimeError("Save a workflow project before starting a mesh study.")
+        previous = self._read_mesh_study_run_state()
+        if previous and previous.get("status") != "completed":
+            if not messagebox.askyesno(
+                    "Replace unfinished mesh study?",
+                    "This project has an unfinished mesh study. Starting a new study will replace its resume point. Continue?"):
+                return
+        run_id = uuid.uuid4().hex
+        state = {
+            "run_id": run_id,
+            "status": "running",
+            "configuration": config.to_dict(),
+            "candidates": [asdict(candidate) for candidate in candidates],
+            "enabled_variables": enabled,
+        }
+        atomic_json(state_path, state)
+        self.mesh_study_progress.configure(maximum=len(candidates), value=0)
+        self._start_worker(lambda: self._mesh_study_worker(config, candidates, enabled, run_id),
+                           status, task="mesh_study")
+
+    def _read_mesh_study_run_state(self) -> dict | None:
+        path = self._mesh_study_state_path()
+        if path is None or not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else None
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def _resume_mesh_study(self) -> None:
+        """Continue an unfinished saved mesh study, skipping completed cases."""
+        if self.store is None:
+            messagebox.showerror("No project selected", "Open the project containing the mesh study to resume.")
+            return
+        try:
+            state = self._read_mesh_study_run_state()
+            if not state or state.get("status") == "completed":
+                messagebox.showerror("No resumable mesh study", "This project has no unfinished mesh study to resume.")
+                self._update_mesh_study_resume_button()
+                return
+            saved_config = ProjectConfig.from_dict(state["configuration"])
+            requested_config = replace(self._read_model_from_fields(), mesh=saved_config.mesh)
+            if not saved_configuration_matches(state.get("configuration"), requested_config):
+                messagebox.showerror(
+                    "Settings changed",
+                    "The workflow settings differ from the saved mesh study. Restore the original settings before resuming.",
+                )
+                return
+            candidates = [MeshSettings(**item) for item in state["candidates"]]
+            enabled = {name: bool(value) for name, value in state.get("enabled_variables", {}).items()}
+            if not candidates:
+                raise ValueError("The saved mesh study contains no candidate settings.")
+            history_path = self.store.root / "mesh_study" / "history.json"
+            try:
+                rows = json.loads(history_path.read_text(encoding="utf-8")).get("candidates", [])
+            except (OSError, TypeError, ValueError):
+                rows = []
+            run_id = str(state["run_id"])
+            completed = {int(row.get("candidate_number", 0)) for row in rows
+                         if row.get("run_id") == run_id and row.get("status") == "completed"}
+            state["status"] = "running"
+            atomic_json(self._mesh_study_state_path(), state)
+            self.mesh_study_progress.configure(maximum=len(candidates), value=len(completed))
+            self._start_worker(lambda: self._mesh_study_worker(saved_config, candidates, enabled, run_id),
+                               f"Resuming mesh study ({len(completed)}/{len(candidates)} complete)",
+                               task="mesh_study")
+        except Exception as error:
+            messagebox.showerror("Cannot resume mesh study", str(error))
 
     def _save_mesh_study_form(self, settings: MeshSettings, enabled: dict[str, bool]) -> None:
         """Persist the isolated mesh-study form values in the selected project."""
@@ -2049,8 +2156,11 @@ class OpTurboApp(tk.Tk):
 
     def _mesh_study_worker(
         self, config: ProjectConfig, candidates: list[MeshSettings], enabled: dict[str, bool],
+        run_id: str | None = None,
     ) -> None:
         """Run each mesh/Fluent case against one shared geometry document."""
+        state_path = self._mesh_study_state_path()
+        state = self._read_mesh_study_run_state() or {}
         try:
             assert self.store is not None
             study_root = self.store.root / "mesh_study"
@@ -2062,7 +2172,13 @@ class OpTurboApp(tk.Tk):
                 saved_rows = []
             records = list(saved_rows) if isinstance(saved_rows, list) else []
             next_id = max((int(row.get("id", 0)) for row in records), default=0) + 1
-            run_id = uuid.uuid4().hex[:10]
+            run_id = run_id or str(state.get("run_id") or uuid.uuid4().hex)
+            completed_numbers = {int(row.get("candidate_number", 0)) for row in records
+                                 if row.get("run_id") == run_id and row.get("status") == "completed"}
+            progress_count = len(completed_numbers)
+            state.update({"run_id": run_id, "status": "running"})
+            if state_path is not None:
+                atomic_json(state_path, state)
             run_root = study_root / "runs" / run_id
             runner = self._runner()
             if config.cfd.source_initialization == "previous_candidate":
@@ -2079,7 +2195,13 @@ class OpTurboApp(tk.Tk):
             for index, mesh_settings in enumerate(candidates, 1):
                 if self.stop_requested.is_set():
                     break
+                if index in completed_numbers:
+                    continue
                 candidate_folder = run_root / f"mesh_{index:03d}"
+                attempt = 2
+                while candidate_folder.exists():
+                    candidate_folder = run_root / f"mesh_{index:03d}_attempt{attempt:02d}"
+                    attempt += 1
                 candidate_config = replace(prepared_config, mesh=mesh_settings)
                 record = {
                     "id": next_id,
@@ -2112,18 +2234,27 @@ class OpTurboApp(tk.Tk):
                 records.append(record)
                 atomic_json(history_path, {"candidates": records})
                 self.events.put(("mesh_study_result", record))
-                self.events.put(("mesh_study_progress", index))
+                progress_count += 1
+                self.events.put(("mesh_study_progress", progress_count))
                 next_id += 1
             message = ("Mesh study stopped after the active case." if self.stop_requested.is_set()
                        else "Mesh study completed.")
+            state["status"] = "stopped" if self.stop_requested.is_set() else "completed"
+            if state_path is not None:
+                atomic_json(state_path, state)
             self.events.put(("done", message))
         except Exception as error:
+            state["status"] = "interrupted"
+            state["last_error"] = str(error)
+            if state_path is not None:
+                atomic_json(state_path, state)
             self.events.put(("error", f"Mesh study could not continue: {error}"))
 
     def _set_running(self, running: bool) -> None:
         self.single_button.configure(state="disabled" if running else "normal")
         self.start_button.configure(state="disabled" if running else "normal")
         self._update_resume_button(running)
+        self._update_mesh_study_resume_button(running)
         self.stop_button.configure(state="normal" if running else "disabled")
         self.terminate_button.configure(state="normal" if running else "disabled")
         if hasattr(self, "mesh_study_manual_button"):
@@ -2131,6 +2262,7 @@ class OpTurboApp(tk.Tk):
             self.mesh_study_auto_button.configure(state="disabled" if running else "normal")
             study_running = running and self.active_task == "mesh_study"
             self.mesh_study_stop_button.configure(state="normal" if study_running else "disabled")
+            self.mesh_study_terminate_button.configure(state="normal" if study_running else "disabled")
         if not running:
             self.active_task = None
 

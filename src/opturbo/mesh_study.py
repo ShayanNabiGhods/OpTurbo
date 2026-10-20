@@ -83,21 +83,33 @@ def mesh_cell_count(mesh_path, log_paths=()) -> int | None:
     import re
     from pathlib import Path
 
-    patterns = (
-        re.compile(r"\bOPTURBO_MESH_CELL_COUNT\s*=\s*([\d,]+)", re.IGNORECASE),
-        re.compile(r"\bnumber\s+of\s+cells\s*[:=]\s*([\d,]+)", re.IGNORECASE),
-        re.compile(r"\btotal\s+cells\s*[:=]\s*([\d,]+)", re.IGNORECASE),
-        re.compile(r"\b([\d,]+)\s+cells\b", re.IGNORECASE),
-        re.compile(r"\bnumber\s+of\s+elements\s*[:=]\s*([\d,]+)", re.IGNORECASE),
-    )
+    logs = []
     for path in log_paths:
         try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            logs.append(Path(path).read_text(encoding="utf-8", errors="replace"))
         except OSError:
             continue
-        counts = [int(match.replace(",", "")) for pattern in patterns for match in pattern.findall(text)]
-        if counts:
-            return max(counts)
+
+    # Fluent reports the overall mesh before listing individual cell zones. Prefer
+    # that explicit header over any larger counts in Workbench logs or mesh files.
+    strong_patterns = (
+        re.compile(r"\bOPTURBO_MESH_CELL_COUNT\s*=\s*([\d,]+)", re.IGNORECASE),
+        re.compile(r"^\s*([\d,]+)\s+cells\s*,\s*\d+\s+cell\s+zones\b", re.IGNORECASE | re.MULTILINE),
+        re.compile(r"\b(?:number\s+of|total)\s+cells\s*[:=]\s*([\d,]+)", re.IGNORECASE),
+    )
+    for pattern in strong_patterns:
+        for text in logs:
+            match = pattern.search(text)
+            if match:
+                return int(match.group(1).replace(",", ""))
+
+    # Weaker Workbench wording is a fallback only. Do not match zone lines such
+    # as "68628 mixed cells" or select the largest incidental number in a log.
+    element_pattern = re.compile(r"\bnumber\s+of\s+elements\s*[:=]\s*([\d,]+)", re.IGNORECASE)
+    for text in logs:
+        match = element_pattern.search(text)
+        if match:
+            return int(match.group(1).replace(",", ""))
 
     try:
         with Path(mesh_path).open("rb") as handle:

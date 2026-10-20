@@ -175,7 +175,8 @@ class PipelineRunner:
         except Exception as error:
             try:
                 error.mesh_study_metrics = {
-                    "cell_count": cell_count,
+                    "cell_count": mesh_cell_count(
+                        mesh, (cfd_dir / "fluent_driver.log", mesh_dir / "meshing.log")) or cell_count,
                     "meshing_seconds": mesh_seconds,
                     "fluent_solution_seconds": time.perf_counter() - cfd_started,
                     "candidate_seconds": time.perf_counter() - mesh_started,
@@ -187,7 +188,8 @@ class PipelineRunner:
         result = self._finalize_result(prepared, raw_result)
         result.update({
             "mesh_settings": asdict(config.mesh),
-            "cell_count": cell_count or mesh_cell_count(mesh, (cfd_dir / "fluent_driver.log",)),
+            "cell_count": mesh_cell_count(
+                mesh, (cfd_dir / "fluent_driver.log", mesh_dir / "meshing.log")) or cell_count,
             "meshing_seconds": mesh_seconds,
             "fluent_solution_seconds": fluent_seconds,
             "candidate_seconds": mesh_seconds + fluent_seconds,
