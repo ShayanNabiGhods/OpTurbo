@@ -286,6 +286,7 @@ class PipelineRunner:
             "RESOLUTION_SIZE_CM = 1.0": f"RESOLUTION_SIZE_CM = {config.mesh.resolution_size_cm}",
             "DUCT_SIZE_CM = 0.3": f"DUCT_SIZE_CM = {config.mesh.duct_size_cm}",
             "HUB_SIZE_CM = 0.3": f"HUB_SIZE_CM = {config.mesh.hub_size_cm}",
+            "INFLATION_ENABLED = True": f"INFLATION_ENABLED = {config.mesh.inflation_enabled!r}",
             "INFLATION_LAYERS = 5": f"INFLATION_LAYERS = {config.mesh.inflation_layers}",
             "INFLATION_MAX_THICKNESS_CM = 0.2": f"INFLATION_MAX_THICKNESS_CM = {config.mesh.inflation_max_thickness_cm}",
         }

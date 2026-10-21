@@ -105,19 +105,32 @@ def mesh_cell_count(mesh_path, log_paths=()) -> int | None:
     logs = []
     for path in log_paths:
         try:
-            logs.append(Path(path).read_text(encoding="utf-8", errors="replace"))
+            source = Path(path)
+            logs.append((source, source.read_text(encoding="utf-8", errors="replace")))
         except OSError:
             continue
 
-    # Fluent reports the overall mesh before listing individual cell zones. Prefer
-    # that explicit header over any larger counts in Workbench logs or mesh files.
+    # The first outer iteration reads a temporary case and replaces its mesh.
+    # Fluent's second total-cell header is the reliable count for the study mesh.
+    fluent_header = re.compile(
+        r"^\s*([\d,]+)\s+cells\s*,\s*\d+\s+cell\s+zones\b",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    for source, text in logs:
+        if source.name.lower() == "fluent_driver.log":
+            matches = fluent_header.findall(text)
+            if len(matches) >= 2:
+                return int(matches[1].replace(",", ""))
+
+    # Fall back to explicit mesh counts if Fluent did not produce a second header.
+    mesh_logs = [(source, text) for source, text in logs
+                 if source.name.lower() != "fluent_driver.log"]
     strong_patterns = (
         re.compile(r"\bOPTURBO_MESH_CELL_COUNT\s*=\s*([\d,]+)", re.IGNORECASE),
-        re.compile(r"^\s*([\d,]+)\s+cells\s*,\s*\d+\s+cell\s+zones\b", re.IGNORECASE | re.MULTILINE),
         re.compile(r"\b(?:number\s+of|total)\s+cells\s*[:=]\s*([\d,]+)", re.IGNORECASE),
     )
     for pattern in strong_patterns:
-        for text in logs:
+        for _source, text in mesh_logs:
             match = pattern.search(text)
             if match:
                 return int(match.group(1).replace(",", ""))
@@ -125,7 +138,7 @@ def mesh_cell_count(mesh_path, log_paths=()) -> int | None:
     # Weaker Workbench wording is a fallback only. Do not match zone lines such
     # as "68628 mixed cells" or select the largest incidental number in a log.
     element_pattern = re.compile(r"\bnumber\s+of\s+elements\s*[:=]\s*([\d,]+)", re.IGNORECASE)
-    for text in logs:
+    for _source, text in mesh_logs:
         match = element_pattern.search(text)
         if match:
             return int(match.group(1).replace(",", ""))

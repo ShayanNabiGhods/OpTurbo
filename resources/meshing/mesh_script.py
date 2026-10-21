@@ -27,6 +27,7 @@ CURVATURE_ANGLE_DEG = 5.0
 RESOLUTION_SIZE_CM = 1.0
 DUCT_SIZE_CM = 0.3
 HUB_SIZE_CM = 0.3
+INFLATION_ENABLED = True
 INFLATION_LAYERS = 5
 INFLATION_MAX_THICKNESS_CM = 0.2
 
@@ -338,32 +339,31 @@ hub_sizing = create_sizing(
 # Create combined selection for the inflation domain.
 # Inflation will be applied to both the resolution domain and
 # the actuator-disk fluid domain.
-inflation_location = ExtAPI.SelectionManager.CreateSelectionInfo(
-    SelectionTypeEnum.GeometryEntities)
-for entity_id in resolution_domain.Location.Ids:
-    inflation_location.Ids.Add(entity_id)
-for entity_id in actuator_domain.Location.Ids:
-    inflation_location.Ids.Add(entity_id)
+if INFLATION_ENABLED:
+    inflation_location = ExtAPI.SelectionManager.CreateSelectionInfo(
+        SelectionTypeEnum.GeometryEntities)
+    for entity_id in resolution_domain.Location.Ids:
+        inflation_location.Ids.Add(entity_id)
+    for entity_id in actuator_domain.Location.Ids:
+        inflation_location.Ids.Add(entity_id)
 
+    # Create combined selection for the inflation boundaries.
+    # Inflation layers will be generated from both the hub wall
+    # and the duct wall.
+    inflation_boundary = ExtAPI.SelectionManager.CreateSelectionInfo(
+        SelectionTypeEnum.GeometryEntities)
+    for entity_id in hub_wall.Location.Ids:
+        inflation_boundary.Ids.Add(entity_id)
+    for entity_id in duct_wall.Location.Ids:
+        inflation_boundary.Ids.Add(entity_id)
 
-# Create combined selection for the inflation boundaries.
-# Inflation layers will be generated from both the hub wall
-# and the duct wall.
-inflation_boundary = ExtAPI.SelectionManager.CreateSelectionInfo(
-    SelectionTypeEnum.GeometryEntities)
-for entity_id in hub_wall.Location.Ids:
-    inflation_boundary.Ids.Add(entity_id)
-for entity_id in duct_wall.Location.Ids:
-    inflation_boundary.Ids.Add(entity_id)
-
-
-# Inflation.
-inflation = mesh.AddInflation()
-inflation.Location = inflation_location
-inflation.BoundaryLocation = inflation_boundary
-inflation.InflationOption = 0
-inflation.NumberOfLayers = INFLATION_LAYERS
-inflation.MaximumThickness = Quantity(INFLATION_MAX_THICKNESS_CM, "cm")
+    # Inflation.
+    inflation = mesh.AddInflation()
+    inflation.Location = inflation_location
+    inflation.BoundaryLocation = inflation_boundary
+    inflation.InflationOption = 0
+    inflation.NumberOfLayers = INFLATION_LAYERS
+    inflation.MaximumThickness = Quantity(INFLATION_MAX_THICKNESS_CM, "cm")
 
 
 mesh.GenerateMesh()

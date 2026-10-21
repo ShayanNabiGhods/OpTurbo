@@ -81,6 +81,7 @@ LABELS = {
     "resolution_size_cm": "Resolution-region size (cm)",
     "duct_size_cm": "Duct-wall size (cm)",
     "hub_size_cm": "Hub-wall size (cm)",
+    "inflation_enabled": "Add inflation layers",
     "inflation_layers": "Inflation layers",
     "inflation_max_thickness_cm": "Inflation max thickness (cm)",
     "stations": "BEM radial stations",
@@ -173,6 +174,7 @@ FIELD_HELP = {
     "resolution_size_cm": "Target mesh size inside the resolution region, in centimetres.",
     "duct_size_cm": "Target mesh size along the duct wall, in centimetres.",
     "hub_size_cm": "Target mesh size along the hub wall, in centimetres.",
+    "inflation_enabled": "Add boundary-layer inflation to the hub and duct walls. Disable this to mesh without inflation layers.",
     "inflation_layers": "Number of boundary-layer mesh layers grown from walls.",
     "inflation_max_thickness_cm": "Maximum total boundary-layer thickness, in centimetres.",
     "flow_speed_m_s": "Free-stream inlet speed used by Fluent and BEM, in metres per second.",
@@ -474,6 +476,7 @@ class OpTurboApp(tk.Tk):
         self.history_lock = threading.Lock()
         self.best_fitness = float("-inf")
         self.field_vars: dict[tuple[str, str], tk.Variable] = {}
+        self.inflation_dependent_controls: list[ttk.Widget] = []
         self.bontempo_controls: list[ttk.Widget] = []
         self.parsec_rows: list[tuple[VariableSpec, tk.BooleanVar, tk.StringVar, tk.StringVar, tk.StringVar]] = []
         self.variable_controls: dict[str, tuple[ttk.Widget, ...]] = {}
@@ -757,9 +760,12 @@ class OpTurboApp(tk.Tk):
                 groups = (
                     ("Global mesh controls", ("global_size_cm", "growth_rate", "cpu_cores", "method", "curvature_angle_deg")),
                     ("Local sizing", ("resolution_size_cm", "duct_size_cm", "hub_size_cm")),
-                    ("Inflation layers", ("inflation_layers", "inflation_max_thickness_cm")),
+                    ("Inflation layers", ("inflation_enabled", "inflation_layers", "inflation_max_thickness_cm")),
                 )
                 self._place_setting_groups(body, section, cls, groups)
+                self.field_vars[("mesh", "inflation_enabled")].trace_add(
+                    "write", self._refresh_inflation_controls)
+                self._refresh_inflation_controls()
             else:
                 groups = (
                     ("Flow and rotor", ("flow_speed_m_s", "density_kg_m3", "viscosity_pa_s", "rotor_radius_m", "hub_radius_m", "blades", "omega_rad_s", "pitch_deg")),
@@ -975,6 +981,15 @@ class OpTurboApp(tk.Tk):
         if control is not None:
             enabled = self.field_vars[("cfd", "source_initialization")].get() == "previous_candidate"
             control.configure(state="normal" if enabled else "disabled")
+
+    def _refresh_inflation_controls(self, *_args: object) -> None:
+        """Gray layer-count and thickness controls when inflation is disabled."""
+        variable = self.field_vars.get(("mesh", "inflation_enabled"))
+        if variable is None:
+            return
+        state = "!disabled" if variable.get() else "disabled"
+        for control in self.inflation_dependent_controls:
+            control.state([state])
 
     def _build_optimization_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=12)
@@ -1195,6 +1210,8 @@ class OpTurboApp(tk.Tk):
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
             widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
+            if section == "mesh" and item.name in {"inflation_layers", "inflation_max_thickness_cm"}:
+                self.inflation_dependent_controls.extend((label_widget, widget))
             help_text = FIELD_HELP.get(item.name, f"Controls {label.lower()}.")
             if inline_help:
                 ttk.Label(parent, text=help_text, style="Subtitle.TLabel", wraplength=360,
@@ -1316,7 +1333,7 @@ class OpTurboApp(tk.Tk):
         """Use panel values for enabled controls and workflow values for disabled ones."""
         values = asdict(workflow_settings)
         for item in fields(MeshSettings):
-            if enabled.get(item.name, True):
+            if item.name in {"method", "cpu_cores"} or enabled.get(item.name, False):
                 values[item.name] = getattr(panel_settings, item.name)
         return MeshSettings(**values)
 
@@ -1331,6 +1348,8 @@ class OpTurboApp(tk.Tk):
                 value = "Default (ANSYS automatic)"
             elif item.name == "cpu_cores" and value is None:
                 value = "Program Controlled"
+            if item.name not in self.mesh_study_vars:
+                continue
             self.mesh_study_vars[item.name].set(
                 self._format_user_number(value) if isinstance(value, float) else str(value))
             if enabled is not None and item.name in enabled:
@@ -1493,12 +1512,17 @@ class OpTurboApp(tk.Tk):
         values = {}
         defaults = MeshSettings()
         for item in fields(MeshSettings):
-            raw = self.mesh_study_vars[item.name].get()
+            if item.name not in self.mesh_study_vars:
+                raw = self.field_vars[("mesh", item.name)].get()
+            else:
+                raw = self.mesh_study_vars[item.name].get()
             default = getattr(defaults, item.name)
             if item.name == "method":
                 values[item.name] = "Default" if raw == "Default (ANSYS automatic)" else raw
             elif item.name == "cpu_cores":
                 values[item.name] = None if raw == "Program Controlled" else int(raw)
+            elif isinstance(default, bool):
+                values[item.name] = bool(raw)
             elif isinstance(default, int):
                 values[item.name] = int(raw)
             elif isinstance(default, float):
@@ -1693,14 +1717,15 @@ class OpTurboApp(tk.Tk):
             raise ValueError("Geometry lengths must be positive.")
         if config.geometry.design_type == "flanged" and config.geometry.duct_flange_length <= 0:
             raise ValueError("Flange length must be positive.")
-        mesh_sizes = (
+        mesh_sizes = [
             config.mesh.global_size_cm,
             config.mesh.growth_rate,
             config.mesh.resolution_size_cm,
             config.mesh.duct_size_cm,
             config.mesh.hub_size_cm,
-            config.mesh.inflation_max_thickness_cm,
-        )
+        ]
+        if config.mesh.inflation_enabled:
+            mesh_sizes.append(config.mesh.inflation_max_thickness_cm)
         if min(mesh_sizes) <= 0:
             raise ValueError("All mesh sizes and inflation thickness must be positive.")
         if config.mesh.curvature_angle_deg <= 0:
@@ -1709,7 +1734,7 @@ class OpTurboApp(tk.Tk):
             raise ValueError("CPU cores for parallel part meshing must be at least one.")
         if config.mesh.method not in {"Default", "Quad", "Tri", "MultiZone"}:
             raise ValueError("Choose Default, Quad, Tri, or MultiZone as the meshing method.")
-        if config.mesh.inflation_layers < 1:
+        if config.mesh.inflation_enabled and config.mesh.inflation_layers < 1:
             raise ValueError("Inflation must contain at least one layer.")
         if config.cfd.stations < 2 or config.cfd.max_outer_iterations < 1:
             raise ValueError("CFD stations and iteration counts are too small.")
@@ -2059,8 +2084,10 @@ class OpTurboApp(tk.Tk):
             if not 1 <= count <= 100:
                 raise ValueError("Automatic sweep cases must be between 1 and 100.")
             enabled_sizes = {name for name, is_enabled in enabled.items() if is_enabled}
+            if not base_mesh.inflation_enabled:
+                enabled_sizes.difference_update({"inflation_layers", "inflation_max_thickness_cm"})
             if not enabled_sizes:
-                raise ValueError("Enable at least one mesh size variable for an automatic sweep.")
+                raise ValueError("Enable at least one active mesh size variable for an automatic sweep.")
             bounds = self._read_mesh_study_bounds(enabled_sizes)
             config = replace(config, mesh=base_mesh)
             self._validate_positive_settings(config)
