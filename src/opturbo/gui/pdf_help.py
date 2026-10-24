@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 import subprocess
 import sys
+from threading import Lock, Thread
 from urllib.parse import quote
 import webbrowser
 from tkinter import messagebox, ttk
@@ -16,6 +19,42 @@ from .widgets import ToolTip
 
 
 DOCS_ROOT = APPLICATION_ROOT / "docs"
+_DOCS_SERVER: ThreadingHTTPServer | None = None
+_DOCS_SERVER_LOCK = Lock()
+
+
+class _QuietDocsHandler(SimpleHTTPRequestHandler):
+    """Serve bundled guides locally without writing request logs to the console."""
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        """Keep routine browser requests out of the application's console."""
+
+
+def _docs_http_server() -> ThreadingHTTPServer:
+    """Start one loopback-only server so PDF viewers honor section fragments.
+
+    Several PDF viewers ignore named-destination fragments on ``file://``
+    URLs. Serving only the bundled docs directory over loopback HTTP lets the
+    PDF viewer process the standard ``nameddest`` fragment correctly.
+    """
+    global _DOCS_SERVER
+    with _DOCS_SERVER_LOCK:
+        if _DOCS_SERVER is None:
+            handler = partial(_QuietDocsHandler, directory=str(DOCS_ROOT))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            server.daemon_threads = True
+            Thread(target=server.serve_forever, name="opturbo-docs", daemon=True).start()
+            _DOCS_SERVER = server
+        return _DOCS_SERVER
+
+
+def _docs_url(filename: str, destination: str | None = None) -> str:
+    """Build a localhost URL to a bundled guide, optionally targeting a section."""
+    server = _docs_http_server()
+    url = f"http://127.0.0.1:{server.server_port}/{quote(filename, safe='/')}"
+    if destination:
+        url += f"#nameddest={quote(destination, safe='')}"
+    return url
 
 
 def _edge_pdf_executable() -> Path | None:
@@ -47,18 +86,15 @@ def _edge_pdf_executable() -> Path | None:
 
 
 def _open_pdf_destination(path: Path, destination: str) -> bool:
-    """Open a PDF at a named section, using Edge's destination fragment form."""
+    """Open a PDF at a named section through a loopback HTTP URL."""
     edge = _edge_pdf_executable()
-    fragment = quote(destination, safe="")
+    url = _docs_url(path.name, destination)
     if edge is not None:
-        url = f"{path.resolve().as_uri()}#{fragment}"
         try:
             subprocess.Popen([str(edge), url], close_fds=True)
             return True
         except OSError:
             pass
-    else:
-        url = f"{path.resolve().as_uri()}#nameddest={fragment}"
     return bool(webbrowser.open_new_tab(url))
 
 
@@ -93,7 +129,7 @@ def open_guide(filename: str) -> None:
         messagebox.showerror("Guide unavailable", f"The OpTurbo guide is missing:\n{path}")
         return
     try:
-        if not webbrowser.open_new_tab(path.resolve().as_uri()):
+        if not webbrowser.open_new_tab(_docs_url(path.name)):
             messagebox.showerror("Cannot open guide", "No browser is available to display the PDF guide.")
     except (OSError, webbrowser.Error) as error:
         messagebox.showerror("Cannot open guide", f"Could not open {filename}:\n{error}")
