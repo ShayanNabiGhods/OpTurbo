@@ -34,8 +34,10 @@ class PreviewTests(unittest.TestCase):
         self.assertAlmostEqual(min(x for x, _ in hub), -65.0)
         self.assertAlmostEqual(max(x for x, _ in hub), 735.0)
         self.assertAlmostEqual(max(r for _, r in hub), 45.0)
-        self.assertAlmostEqual(min(x for x, _ in disk), -5.0)
-        self.assertAlmostEqual(max(x for x, _ in disk), 0.0)
+        # FreeCAD builds the disk about actuator_origin_x = 2.5 mm with
+        # 5 mm thickness, so its axial extent is 0..5 mm.
+        self.assertAlmostEqual(min(x for x, _ in disk), 0.0)
+        self.assertAlmostEqual(max(x for x, _ in disk), 5.0)
         self.assertAlmostEqual(max(r for _, r in disk), 450.0)
 
     def test_geometry_variables_do_not_pollute_parsec_dictionary(self):
