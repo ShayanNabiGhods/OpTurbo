@@ -7,6 +7,7 @@ from tkinter import ttk
 from ..objectives import OBJECTIVES
 from .constants import CFD_CHOICE_VALUES, CPU_CORE_CHOICES, FIELD_HELP, LABELS
 from .widgets import ToolTip
+from .pdf_help import add_pdf_help_button
 
 
 class SettingsFormMixin:
@@ -64,6 +65,8 @@ class SettingsFormMixin:
                 self.source_weight_control = widget
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            help_topic = f"{section}.{item.name}" if item.name == "hub_radius" else item.name
+            add_pdf_help_button(parent, row, help_topic, label)
             widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
             if section == "mesh" and item.name in {"inflation_layers", "inflation_max_thickness_cm"}:
                 self.inflation_dependent_controls.extend((label_widget, widget))
@@ -76,9 +79,9 @@ class SettingsFormMixin:
             ToolTip(widget, help_text)
             if section == "tools" and item.name == "handoff_dir":
                 widget.configure(state="readonly")
-                ttk.Label(parent, text="Protected", foreground="#a34a2a").grid(row=row, column=2, padx=4)
+                ttk.Label(parent, text="Protected", foreground="#a34a2a").grid(row=row, column=3, padx=4)
             elif browse_paths:
-                ttk.Button(parent, text="Browse…", command=lambda var=variable: self._browse_tool(var)).grid(row=row, column=2, padx=4)
+                ttk.Button(parent, text="Browse…", command=lambda var=variable: self._browse_tool(var)).grid(row=row, column=3, padx=4)
             row += 2 if inline_help else 1
         parent.columnconfigure(1, weight=1)
 

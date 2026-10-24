@@ -15,6 +15,14 @@ cd "C:\Project Saves\Python Codes\OpTurbo"
 python run.py
 ```
 
+## Documentation
+
+The **Help** menu opens the complete [User Manual](docs/manual.pdf) and
+[Theory Guide](docs/theory.pdf). Question-mark buttons beside settings open the
+manual at the section for that option. The Markdown sources are in `docs/`;
+regenerate the PDFs and manual page index with
+`python scripts/build_documentation.py`.
+
 Tkinter is included with the standard Windows Python installer. Check the
 executable paths on the **Project** tab before running. The default paths are
 configured for FreeCAD 1.1 and ANSYS `v241`, matching the defaults in the

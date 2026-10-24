@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 230" role="img" aria-labelledby="title desc">
+  <title id="title">Genetic algorithm generation cycle</title>
+  <desc id="desc">Initialize a population, evaluate candidates, select parents, cross over values, mutate and clamp, keep elites, and repeat.</desc>
+  <g font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#1d2935" stroke="#9fb5bc" stroke-width="3">
+    <rect x="15" y="75" width="185" height="80" rx="14" fill="#e9f3f4"/><text x="107" y="122" stroke="none">Initialize</text>
+    <rect x="245" y="75" width="185" height="80" rx="14" fill="#f3f5f7"/><text x="337" y="122" stroke="none">Evaluate</text>
+    <rect x="475" y="75" width="185" height="80" rx="14" fill="#e9f3f4"/><text x="567" y="122" stroke="none">Select parents</text>
+    <rect x="705" y="75" width="185" height="80" rx="14" fill="#f3f5f7"/><text x="797" y="122" stroke="none">Cross over</text>
+    <rect x="935" y="75" width="210" height="80" rx="14" fill="#e9f3f4"/><text x="1040" y="122" stroke="none">Mutate + clamp</text>
+    <rect x="1190" y="75" width="195" height="80" rx="14" fill="#f3f5f7"/><text x="1287" y="122" stroke="none">Keep elites</text>
+  </g>
+  <g fill="none" stroke="#176b73" stroke-width="5" marker-end="url(#arrow)">
+    <path d="M200 115H235M430 115H465M660 115H695M890 115H925M1145 115H1180"/>
+    <path d="M1287 165V205H337V165"/>
+  </g>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#176b73"/></marker></defs>
+</svg>

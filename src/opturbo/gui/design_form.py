@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 from ..models import GeometrySettings, VariableSpec, default_design_variables
 from ..workflows.axisymmetric_2d.geometry.design_import import read_design_snapshot
 from .widgets import ScrollableFrame, ToolTip
+from .pdf_help import add_pdf_help_button, open_manual_topic
 
 
 class DesignFormMixin:
@@ -24,6 +25,12 @@ class DesignFormMixin:
         chooser = ttk.Frame(left)
         chooser.pack(fill="x", pady=(4, 6))
         ttk.Label(chooser, text="Design type:").pack(side="left")
+        design_help = ttk.Button(
+            chooser, text="?", width=2,
+            command=lambda: open_manual_topic("design_type", "Design type"),
+        )
+        design_help.pack(side="left", padx=(3, 0))
+        ToolTip(design_help, "Open the user manual section for duct design type.")
         self.design_type_var = tk.StringVar(value=self.config_model.geometry.design_type)
         design_picker = ttk.Combobox(chooser, textvariable=self.design_type_var, state="readonly",
                                      values=("airfoil", "flanged"), width=16)
@@ -73,6 +80,7 @@ class DesignFormMixin:
             minimum_entry = ttk.Entry(self.parsec_body, textvariable=minimum, width=11, **numeric_options)
             maximum_entry = ttk.Entry(self.parsec_body, textvariable=maximum, width=11, **numeric_options)
             label.grid(row=row, column=1, sticky="w", padx=3)
+            add_pdf_help_button(self.parsec_body, row, spec.key, spec.label, column=5)
             minimum_entry.grid(row=row, column=2, padx=3)
             value_entry.grid(row=row, column=3, padx=3)
             maximum_entry.grid(row=row, column=4, padx=3)
@@ -89,6 +97,7 @@ class DesignFormMixin:
                               self._set_variable_row_state(key, flag.get()))
             self._set_variable_row_state(spec.key, enabled.get())
         self.parsec_body.columnconfigure(1, weight=1)
+        self.parsec_body.columnconfigure(5, weight=0)
         for column in (0, 2, 3, 4):
             self.parsec_body.columnconfigure(column, weight=0)
 

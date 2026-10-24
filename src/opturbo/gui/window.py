@@ -25,6 +25,7 @@ from .optimization_controls import OptimizationControlsMixin
 from .optimization_view import OptimizationViewMixin
 from .optimization_worker import OptimizationWorkerMixin
 from .project_view import ProjectViewMixin
+from .pdf_help import open_guide
 from .settings_form import SettingsFormMixin
 from .workflow_settings import WorkflowSettingsMixin
 
@@ -108,6 +109,8 @@ class OpTurboWindow(
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="About", command=lambda: messagebox.showinfo(
             "About OpTurbo", "OpTurbo V0.0.1\nDAWT geometry-to-CFD genetic optimization"))
+        help_menu.add_command(label="User Manual (PDF)", command=lambda: open_guide("manual.pdf"))
+        help_menu.add_command(label="Theory Guide (PDF)", command=lambda: open_guide("theory.pdf"))
         menu.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menu)
 

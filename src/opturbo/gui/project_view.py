@@ -11,6 +11,7 @@ from ..paths import APPLICATION_ROOT as APP_ROOT
 from ..storage import ProjectStore
 from ..workflows import available_workflows, get_workflow
 from .widgets import ScrollableFrame
+from .pdf_help import add_pdf_help_button
 
 
 class ProjectViewMixin:
@@ -28,6 +29,7 @@ class ProjectViewMixin:
         project_box = ttk.LabelFrame(left, text="Workflow project", padding=12)
         project_box.pack(fill="x")
         ttk.Label(project_box, text="Engineering workflow").grid(row=0, column=0, sticky="w", pady=5)
+        add_pdf_help_button(project_box, 0, "workflow", "Engineering workflow")
         self.workflow_id_var = tk.StringVar(value=self.config_model.workflow_id)
         workflow_choices = {
             workflow_id: get_workflow(workflow_id, APP_ROOT).title
@@ -44,12 +46,14 @@ class ProjectViewMixin:
         workflow_combo.grid(row=0, column=1, sticky="ew", padx=8)
         workflow_combo.bind("<<ComboboxSelected>>", self._select_workflow)
         ttk.Label(project_box, text="Project name").grid(row=1, column=0, sticky="w", pady=5)
+        add_pdf_help_button(project_box, 1, "project_name", "Project name")
         self.project_name_var = tk.StringVar()
         ttk.Entry(project_box, textvariable=self.project_name_var).grid(row=1, column=1, sticky="ew", padx=8)
         ttk.Label(project_box, text="Save folder").grid(row=2, column=0, sticky="w", pady=5)
+        add_pdf_help_button(project_box, 2, "save_folder", "Save folder")
         self.save_dir_var = tk.StringVar()
         ttk.Entry(project_box, textvariable=self.save_dir_var, state="readonly").grid(row=2, column=1, sticky="ew", padx=8)
-        ttk.Button(project_box, text="Choose…", command=self._choose_project_folder).grid(row=2, column=2)
+        ttk.Button(project_box, text="Choose…", command=self._choose_project_folder).grid(row=2, column=3)
         ttk.Button(project_box, text="Save now", command=self._save_project).grid(row=3, column=1, sticky="w", padx=8, pady=8)
         project_box.columnconfigure(1, weight=1)
         tools = ttk.LabelFrame(right, text="Installed engineering tools", padding=12)
