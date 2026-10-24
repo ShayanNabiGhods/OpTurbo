@@ -1,1 +1,1 @@
-"""Modular DAWT profile generation package."""
+"""Compatibility package for axisymmetric geometry modules."""
