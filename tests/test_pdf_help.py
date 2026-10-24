@@ -1,4 +1,4 @@
-"""Check that manual help links use named PDF destinations over HTTP."""
+"""Check that manual help links target named destinations in the bundled PDF."""
 
 import json
 import unittest
