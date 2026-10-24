@@ -1,20 +1,5 @@
-"""Read Fluent surface report files."""
+"""Compatibility exports for cfd module reports."""
 
-import re
-from pathlib import Path
+from ..workflows.axisymmetric_2d.cfd.reports import NUMBER_AT_END, read_report
 
-NUMBER_AT_END = re.compile(r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*$")
-
-
-def read_report(path, expected):
-    """Return values from Fluent lines, in line-number order."""
-    values = []
-    for line in Path(path).read_text(errors="replace").splitlines():
-        if "line-" not in line:
-            continue
-        match = NUMBER_AT_END.search(line)
-        if match:
-            values.append(float(match.group(1)))
-    if len(values) != expected:
-        raise ValueError(f"{path}: expected {expected} values, found {len(values)}")
-    return values
+__all__ = ['NUMBER_AT_END', 'read_report']

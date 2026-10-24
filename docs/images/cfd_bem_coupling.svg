@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" role="img" aria-labelledby="title desc">
+  <title id="title">CFD and BEM coupling loop</title>
+  <desc id="desc">Fluent flow produces radial velocity reports; BEM computes blade loads; relaxed sources return to Fluent for the next outer iteration.</desc>
+  <g font-family="Arial, sans-serif" font-size="25" font-weight="bold" text-anchor="middle" fill="#1d2935" stroke="#9fb5bc" stroke-width="3">
+    <rect x="20" y="65" width="245" height="95" rx="16" fill="#e9f3f4"/><text x="142" y="122" stroke="none">Fluent flow</text>
+    <rect x="330" y="65" width="245" height="95" rx="16" fill="#f3f5f7"/><text x="452" y="122" stroke="none">Radial reports</text>
+    <rect x="640" y="65" width="245" height="95" rx="16" fill="#e9f3f4"/><text x="762" y="122" stroke="none">BEM blade loads</text>
+    <rect x="950" y="65" width="230" height="95" rx="16" fill="#f3f5f7"/><text x="1065" y="122" stroke="none">Relaxed sources</text>
+  </g>
+  <g fill="none" stroke="#176b73" stroke-width="5" marker-end="url(#arrow)">
+    <path d="M265 112H320M575 112H630M885 112H940"/>
+    <path d="M1065 168V205H142V170"/>
+  </g>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#176b73"/></marker></defs>
+</svg>

@@ -16,6 +16,10 @@ class MonitorPlotTests(unittest.TestCase):
         plot.palette = dict.fromkeys(("text", "axis", "muted", "grid"), "black")
         plot.series = [("Test", values)]
         plot.log_ticks, plot.y_step = log_ticks, y_step
+        # Keep the mock aligned with the current LinePlot constructor fields.
+        plot.y_max = None
+        plot.smooth, plot.markers, plot.scatter = True, False, False
+        plot.marker_size = 5
         plot.COLORS = LinePlot.COLORS
         LinePlot.redraw(plot)
         return plot

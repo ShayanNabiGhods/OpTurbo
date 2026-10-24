@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import threading
+import shutil
 from typing import Callable
 
 
@@ -23,6 +24,19 @@ def executable_path(configured: str) -> str:
     if os.name != "nt" and len(configured) > 2 and configured[1:3] == ":\\":
         return f"/mnt/{configured[0].lower()}/{configured[3:].replace(chr(92), '/')}"
     return configured
+
+
+def require_executable(configured: str, display_name: str) -> str:
+    """Return the execution path or fail before launching an external tool."""
+    resolved = executable_path(configured)
+    candidate = Path(resolved).expanduser()
+    if candidate.is_file():
+        return str(candidate)
+    if not Path(resolved).is_absolute() and shutil.which(resolved):
+        return resolved
+    raise FileNotFoundError(
+        f"{display_name} executable was not found at the configured path: {configured}"
+    )
 
 
 def run_streaming(command: list[str], cwd: Path, log_path: Path, emit: Callable[[str], None], cancel: Callable[[], bool] | None = None) -> None:

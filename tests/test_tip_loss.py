@@ -49,7 +49,7 @@ class TipLossTests(unittest.TestCase):
         self.assertAlmostEqual(new.dQ[0] / old.dQ[0], ratio)
 
     def test_project_defaults_and_round_trip(self):
-        self.assertEqual(ProjectConfig.from_dict({}).cfd.tip_loss_model, "prandtl")
+        self.assertEqual(ProjectConfig.from_dict({}).cfd.tip_loss_model, "bontempo2025")
         config = ProjectConfig()
         config.cfd.tip_loss_model = "bontempo2025"
         config.cfd.bontempo_g_a = -0.3
