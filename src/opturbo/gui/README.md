@@ -33,7 +33,7 @@ gui/
 ├── choices.py                  # GUI setting groups and selectable values
 ├── constants.py                # Compatibility exports for UI constants
 ├── configuration.py            # Saved-vs-requested configuration comparison
-├── pdf_help.py                 # Open manual at a named section destination
+├── pdf_help.py                 # Open the bundled manual and theory PDFs
 ├── plot.py                     # Dependency-free Tk canvas plots
 ├── scrolling.py                # Scrollable settings frame
 ├── tooltips.py                 # Hover tooltip widget
@@ -44,4 +44,5 @@ The root window composes focused mixins so each tab's controls stay near their
 event handlers. Mixins share state through the root window instance. Keep
 engineering validation in `opturbo.domain` and external execution in the
 workflow pipeline; UI modules should not call FreeCAD, SpaceClaim, Meshing, or
-Fluent directly.
+Fluent directly. The single Help button in the top header opens the user manual;
+the Help menu retains the theory guide and About dialog.

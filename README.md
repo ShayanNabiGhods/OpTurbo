@@ -17,11 +17,10 @@ python run.py
 
 ## Documentation
 
-The **Help** menu opens the complete [User Manual](docs/manual.pdf) and
-[Theory Guide](docs/theory.pdf). Question-mark buttons beside settings open the
-manual at the section for that option. The Markdown sources are in `docs/`;
-regenerate the PDFs and manual page index with
-`python scripts/build_documentation.py`.
+The **Help** button at the top of the application opens the complete
+[User Manual](docs/manual.pdf). The **Help** menu also contains the
+[Theory Guide](docs/theory.pdf). The Markdown sources are in `docs/`; regenerate
+both PDFs with `python scripts/build_documentation.py`.
 
 Tkinter is included with the standard Windows Python installer. Check the
 executable paths on the **Project** tab before running. The default paths are

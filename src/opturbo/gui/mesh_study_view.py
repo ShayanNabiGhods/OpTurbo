@@ -8,7 +8,6 @@ from ..models import MeshSettings
 from ..workflows.axisymmetric_2d.mesh_study import mesh_variable_bounds
 from .constants import CPU_CORE_CHOICES, LABELS, MESH_STUDY_SIZE_FIELDS
 from .widgets import ScrollableFrame
-from .pdf_help import add_pdf_help_button
 
 
 class MeshStudyViewMixin:
@@ -33,22 +32,20 @@ class MeshStudyViewMixin:
         self.mesh_study_vars["method"] = tk.StringVar()
         method_label = ttk.Label(controls, text="Mesh method")
         method_label.grid(row=0, column=1, sticky="w", padx=4, pady=3)
-        add_pdf_help_button(controls, 0, "method", "Mesh method")
         self.mesh_study_labels["method"] = method_label
         method = ttk.Combobox(controls, textvariable=self.mesh_study_vars["method"], state="readonly",
                               values=("Default (ANSYS automatic)", "Quad", "Tri", "MultiZone"), width=25)
-        method.grid(row=0, column=3, columnspan=3, sticky="ew", padx=4, pady=3)
+        method.grid(row=0, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
         self.mesh_study_controls["method"] = method
         self.mesh_study_vars["cpu_cores"] = tk.StringVar()
         cpu_label = ttk.Label(controls, text=LABELS.get("cpu_cores", "CPU cores"))
         cpu_label.grid(row=1, column=1, sticky="w", padx=4, pady=3)
-        add_pdf_help_button(controls, 1, "cpu_cores", "CPU cores")
         self.mesh_study_labels["cpu_cores"] = cpu_label
         cpu = ttk.Combobox(controls, textvariable=self.mesh_study_vars["cpu_cores"],
                            values=CPU_CORE_CHOICES, state="readonly", width=18)
-        cpu.grid(row=1, column=3, columnspan=3, sticky="ew", padx=4, pady=3)
+        cpu.grid(row=1, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
         self.mesh_study_controls["cpu_cores"] = cpu
-        for column, heading in ((3, "Minimum"), (4, "Current"), (5, "Maximum")):
+        for column, heading in ((2, "Minimum"), (3, "Current"), (4, "Maximum")):
             ttk.Label(controls, text=heading, style="Subtitle.TLabel").grid(
                 row=2, column=column, sticky="w", padx=4, pady=(8, 2))
         size_fields = [item for item in fields(MeshSettings) if item.name in MESH_STUDY_SIZE_FIELDS]
@@ -64,62 +61,59 @@ class MeshStudyViewMixin:
                 row=row, column=0, sticky="w", padx=4, pady=3)
             label = ttk.Label(controls, text=LABELS.get(name, name.replace("_", " ").title()))
             label.grid(row=row, column=1, sticky="w", padx=4, pady=3)
-            add_pdf_help_button(controls, row, name, LABELS.get(name, name))
             self.mesh_study_labels[name] = label
             widget = ttk.Entry(controls, textvariable=self.mesh_study_vars[name], width=8,
                                validate="key", validatecommand=self.numeric_entry_validate)
-            widget.grid(row=row, column=4, sticky="ew", padx=3, pady=3)
+            widget.grid(row=row, column=3, sticky="ew", padx=3, pady=3)
             self.mesh_study_controls[name] = widget
             minimum = ttk.Entry(controls, textvariable=self.mesh_study_min_vars[name], width=8,
                                 validate="key", validatecommand=self.numeric_entry_validate)
-            minimum.grid(row=row, column=3, sticky="ew", padx=3, pady=3)
+            minimum.grid(row=row, column=2, sticky="ew", padx=3, pady=3)
             maximum = ttk.Entry(controls, textvariable=self.mesh_study_max_vars[name], width=8,
                                 validate="key", validatecommand=self.numeric_entry_validate)
-            maximum.grid(row=row, column=5, sticky="ew", padx=3, pady=3)
+            maximum.grid(row=row, column=4, sticky="ew", padx=3, pady=3)
             self.mesh_study_bound_controls[name] = (minimum, maximum)
         self._refresh_mesh_study_controls()
         self.mesh_study_count_var = tk.StringVar(value="20")
         count_row = len(size_fields) + 3
         ttk.Label(controls, text="Automatic sweep cases").grid(
             row=count_row, column=0, columnspan=2, sticky="w", padx=4, pady=(8, 3))
-        add_pdf_help_button(controls, count_row, "mesh-study", "Automatic sweep cases")
         ttk.Spinbox(controls, from_=1, to=100, textvariable=self.mesh_study_count_var, width=8).grid(
-            row=count_row, column=3, sticky="w", padx=4, pady=(8, 3))
+            row=count_row, column=2, sticky="w", padx=4, pady=(8, 3))
         self.mesh_study_strategy_var = tk.StringVar(value="Screening + combinations")
         ttk.Label(controls, text="Sweep strategy").grid(
             row=count_row + 1, column=0, columnspan=2, sticky="w", padx=4, pady=3)
-        add_pdf_help_button(controls, count_row + 1, "mesh-study", "Sweep strategy")
         self.mesh_study_strategy_control = ttk.Combobox(
             controls, textvariable=self.mesh_study_strategy_var,
             values=("Screening + combinations", "Evenly spaced"), state="readonly", width=24)
         self.mesh_study_strategy_control.grid(
-            row=count_row + 1, column=3, columnspan=3, sticky="ew", padx=4, pady=3)
+            row=count_row + 1, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
         self.mesh_study_manual_button = ttk.Button(
             controls, text="Run this mesh setup", command=self._start_manual_mesh_study)
-        self.mesh_study_manual_button.grid(row=count_row + 2, column=0, columnspan=6, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_manual_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         self.mesh_study_auto_button = ttk.Button(
             controls, text="Run automatic mesh sweep", command=self._start_automatic_mesh_study)
-        self.mesh_study_auto_button.grid(row=count_row + 3, column=0, columnspan=6, sticky="ew", padx=4, pady=3)
+        self.mesh_study_auto_button.grid(row=count_row + 3, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_resume_button = ttk.Button(
             controls, text="Resume mesh study", command=self._resume_mesh_study, state="disabled")
-        self.mesh_study_resume_button.grid(row=count_row + 4, column=0, columnspan=6,
+        self.mesh_study_resume_button.grid(row=count_row + 4, column=0, columnspan=5,
                                            sticky="ew", padx=4, pady=3)
         self.mesh_study_stop_button = ttk.Button(
             controls, text="Stop after current case", command=self._stop, state="disabled")
-        self.mesh_study_stop_button.grid(row=count_row + 5, column=0, columnspan=6, sticky="ew", padx=4, pady=3)
+        self.mesh_study_stop_button.grid(row=count_row + 5, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
         self.mesh_study_terminate_button = ttk.Button(
             controls, text="Terminate whole process", command=self._terminate, state="disabled")
-        self.mesh_study_terminate_button.grid(row=count_row + 6, column=0, columnspan=6,
+        self.mesh_study_terminate_button.grid(row=count_row + 6, column=0, columnspan=5,
                                               sticky="ew", padx=4, pady=3)
         self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
-        self.mesh_study_progress.grid(row=count_row + 7, column=0, columnspan=6, sticky="ew", padx=4, pady=(8, 3))
+        self.mesh_study_progress.grid(row=count_row + 7, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
         ttk.Label(controls, text="Screening tests low/high values then combinations; evenly spaced sweeps all enabled values from minimum to maximum.",
                   style="Subtitle.TLabel", wraplength=280, justify="left").grid(
-            row=count_row + 8, column=0, columnspan=6, sticky="w", padx=4, pady=(3, 8))
+            row=count_row + 8, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
         ttk.Button(controls, text="Load mesh values from Workflow Settings",
                    command=self._load_mesh_study_values_from_workflow).grid(
-            row=count_row + 9, column=0, columnspan=6, sticky="ew", padx=4, pady=3)
-        for column in (3, 4, 5):
+            row=count_row + 9, column=0, columnspan=5, sticky="ew", padx=4, pady=3)
+        for column in (2, 3, 4):
             controls.columnconfigure(column, weight=1, uniform="mesh_study_values")
 
         ttk.Label(review, text="Mesh study candidates", style="Title.TLabel").pack(anchor="w", pady=(0, 4))

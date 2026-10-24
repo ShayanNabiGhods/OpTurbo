@@ -4,8 +4,7 @@
 docs/
 ├── README.md                   # This documentation map and build instructions
 ├── manual.md                   # Editable user-facing operation guide
-├── manual.pdf                  # Generated manual with named section anchors
-├── manual_help_index.json      # GUI field-to-manual destination map
+├── manual.pdf                  # Generated user guide with chapter bookmarks
 ├── theory.md                   # Editable engineering and algorithm guide
 ├── theory.pdf                  # Generated theory guide
 └── images/
@@ -14,12 +13,10 @@ docs/
 ```
 
 The Markdown files are the editable source. The PDF files are generated
-deliverables. The GUI reads `manual_help_index.json` to map a field's help
-button to a stable named section destination in `manual.pdf`; the map is
-regenerated together with the PDFs. Keep manual heading identifiers and the
-builder's `FIELD_TOPICS` map aligned when changing sections.
+deliverables. A single Help button at the top of the app opens the complete
+manual; the PDF outline lets readers navigate its chapters and sections.
 
-Regenerate the PDFs and help index from the repository root:
+Regenerate both PDFs from the repository root:
 
 ```powershell
 python scripts/build_documentation.py

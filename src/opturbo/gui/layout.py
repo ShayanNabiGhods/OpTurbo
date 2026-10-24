@@ -3,6 +3,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .pdf_help import open_guide
+
 
 class LayoutMixin:
     def _build_menu(self) -> None:
@@ -18,6 +20,7 @@ class LayoutMixin:
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="About", command=lambda: messagebox.showinfo(
             "About OpTurbo", "OpTurbo V0.0.1\nDAWT geometry-to-CFD genetic optimization"))
+        help_menu.add_command(label="Theory Guide (PDF)", command=lambda: open_guide("theory.pdf"))
         menu.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menu)
 
@@ -29,6 +32,8 @@ class LayoutMixin:
                   style="Subtitle.TLabel").pack(side="left", padx=16, pady=(6, 0))
         self.status_var = tk.StringVar(value="Ready — choose a project folder to begin")
         ttk.Label(header, textvariable=self.status_var, style="Status.TLabel").pack(side="right")
+        ttk.Button(header, text="Help", command=lambda: open_guide("manual.pdf")).pack(
+            side="right", padx=(0, 10))
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self._build_project_tab()

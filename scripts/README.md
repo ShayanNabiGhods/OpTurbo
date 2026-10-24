@@ -6,13 +6,13 @@ repository root so project-relative resource paths resolve as expected.
 
 ```text
 scripts/
-├── build_documentation.py   # Render docs/*.md as PDFs and build help index
+├── build_documentation.py   # Render docs/*.md as the two PDF guides
 ├── run_small_optimization.py # Start a small development optimization run
 └── README.md                 # This script map
 ```
 
-`build_documentation.py` writes the two committed guides and
-`docs/manual_help_index.json`; review those generated files after editing the
-Markdown sources. `run_small_optimization.py` is intended for local development
-and requires the configured engineering tools to evaluate candidates. Direct
-its output to a separate project/results folder, never into source resources.
+`build_documentation.py` writes the two committed guides; review the generated
+PDFs after editing the Markdown sources. `run_small_optimization.py` is intended
+for local development and requires the configured engineering tools to evaluate
+candidates. Direct its output to a separate project/results folder, never into
+source resources.
