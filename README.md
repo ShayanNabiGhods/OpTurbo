@@ -15,6 +15,31 @@ cd "C:\Project Saves\Python Codes\OpTurbo"
 python run.py
 ```
 
+## Citing OpTurbo
+
+If OpTurbo is used in your research, please cite the software
+and specify the version used to ensure reproducibility.
+
+**Recommended citation:**
+
+Shayan, Nabi Ghods. *OpTurbo*. Zenodo.
+https://doi.org/10.5281/zenodo.23621604
+
+### BibTeX
+
+```bibtex
+@software{ghods_opturbo,
+  author  = { Nabi Ghods, Shayan},
+  title   = {{OpTurbo}},
+  doi     = {10.5281/zenodo.23621604},
+  url     = {https://doi.org/10.5281/zenodo.23621604},
+  license = {GPL-3.0-only}
+}
+```
+
+Please cite OpTurbo when it materially contributes to the
+methods, computational workflow, or results of your research.
+
 ## Documentation
 
 The **Help** button at the top of the application opens the complete

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: >-
+  If you use OpTurbo in your research, please cite it using
+  the following metadata.
+title: "OpTurbo"
+authors:
+  - family-names: Nabi Ghods
+    given-names: Shayan
+type: software
+doi: "10.5281/zenodo.23621604"
+url: "https://github.com/ShayanNabiGhods/OpTurbo"
+license: GPL-3.0-only
+abstract: >-
+  OpTurbo is a Windows desktop application for the design and
+  optimization of ducted wind turbines. It automates an engineering
+  workflow connecting FreeCAD geometry generation, SpaceClaim,
+  ANSYS Meshing, and Fluent/BEM simulations, with a genetic
+  algorithm for optimizing turbine designs based on power coefficient.
