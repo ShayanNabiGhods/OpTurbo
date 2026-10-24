@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opturbo"
-version = "0.0.1"
+version = "0.3.1"
 description = "GUI-driven DAWT geometry, meshing, CFD/BEM, and GA optimization"
 requires-python = ">=3.10"
 
