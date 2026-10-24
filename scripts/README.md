@@ -1,6 +1,18 @@
-# Helper scripts
+# Developer scripts
 
-These scripts are developer entry points for small optimization runs and
-manual checks. They use the same public `opturbo` models, optimizer, pipeline,
-and project store as the desktop application. Generated projects and candidate
-results should be directed to a separate output folder.
+These are opt-in developer utilities, not part of the desktop startup path.
+They import the same package services as the application. Run them from the
+repository root so project-relative resource paths resolve as expected.
+
+```text
+scripts/
+├── build_documentation.py   # Render docs/*.md as PDFs and build help index
+├── run_small_optimization.py # Start a small development optimization run
+└── README.md                 # This script map
+```
+
+`build_documentation.py` writes the two committed guides and
+`docs/manual_help_index.json`; review those generated files after editing the
+Markdown sources. `run_small_optimization.py` is intended for local development
+and requires the configured engineering tools to evaluate candidates. Direct
+its output to a separate project/results folder, never into source resources.

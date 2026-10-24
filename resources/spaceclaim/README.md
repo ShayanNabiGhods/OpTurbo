@@ -1,7 +1,15 @@
 # SpaceClaim resources
 
-`profile_assembly.scscript` is the recorded SpaceClaim import/preparation script
-used by the 2D axisymmetric workflow. The script depends on fixed body and face
-identities and the configured handoff folder. The workflow copies the assembly
-into that folder, runs SpaceClaim, then copies the resulting document into the
-candidate's `02_spaceclaim/` output folder.
+```text
+spaceclaim/
+├── profile_assembly.scscript   # Recorded import/preparation script
+└── README.md                  # This resource map
+```
+
+`profile_assembly.scscript` opens the candidate STEP assembly, applies the
+recorded SpaceClaim operations to known body/face identities, and saves the
+prepared document. It relies on fixed vendor handoff paths configured in the
+project model and adapter. Those paths and recorded selections are operational
+contracts; changing them or substantially changing STEP topology can break the
+script. The pipeline copies the resulting SCDOC into the candidate's
+`02_spaceclaim/` archive after the stage.

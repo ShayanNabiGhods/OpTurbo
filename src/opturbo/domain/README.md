@@ -1,12 +1,25 @@
-# Domain models
+# Shared domain models
 
-This folder defines saved project settings, design variables, workflow input
-validation, and valid Fluent setting values. It has no Tkinter or vendor-tool
-dependency. The GUI reads and validates these models before saving; the
-axisymmetric pipeline validates them again before starting external tools.
+These dataclasses and validation helpers describe settings independent of Tk
+and vendor executables. The GUI edits them; a workflow validates them again
+before starting expensive external tools.
 
-`ProjectConfig` keeps the existing 2D settings fields for saved-project
-compatibility and carries future workflow options under
-`workflow_settings[workflow_id]`.
+```text
+domain/
+├── __init__.py       # Curated public model exports
+├── project.py        # ProjectConfig serialization and old-project defaults
+├── design.py         # Duct settings, design variable specs and defaults
+├── mesh.py           # ANSYS Meshing settings and mesh-study defaults
+├── cfd.py            # Fluent and BEM configuration fields
+├── optimization.py   # Genetic-algorithm configuration
+├── tools.py          # External executable paths and fixed handoff paths
+├── accessibility.py  # Saved accessibility/theme preferences
+├── choices.py        # Allowed CFD values shared by UI and validators
+└── validation.py     # Cross-field/range checks before pipeline launch
+```
 
-`models.py` at the package root re-exports these types for older imports.
+`ProjectConfig` is the persisted top-level settings object. It retains the
+current axisymmetric fields for backward compatibility and has a
+`workflow_settings` mapping for future workflow-specific options. Keep these
+models serializable and free of Tk widgets, process handles, or FreeCAD/Fluent
+objects. `opturbo.models` re-exports legacy public names.

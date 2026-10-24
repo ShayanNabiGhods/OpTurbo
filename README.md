@@ -181,6 +181,34 @@ The original `opturbo.geometry`, `opturbo.cfd`, and
 `opturbo.pipeline.runner` import paths remain as compatibility facades. New
 workflow-specific code belongs below `opturbo.workflows/<workflow_id>/`.
 
+### Repository folder map
+
+```text
+OpTurbo/
+├── run.py                          # Start the desktop application
+├── src/opturbo/                    # Application package; see its README
+│   ├── gui/                        # Tkinter UI and PDF help links
+│   ├── domain/                     # Settings models and validation
+│   ├── pipeline/                   # Workflow-neutral process helpers
+│   ├── workflows/                  # Workflow registry and implementations
+│   │   └── axisymmetric_2d/         # Geometry, CFD/BEM, workers and pipeline
+│   ├── geometry/, cfd/             # Legacy implementation facades
+│   └── optimizer.py, storage.py    # Shared GA and persistence services
+├── resources/                      # Vendor scripts, baseline and CFD tables
+│   ├── spaceclaim/
+│   ├── meshing/
+│   ├── fluent/libudf/
+│   └── cfd_tables/
+├── scripts/                        # Documentation builder and dev runner
+├── docs/                           # Manual/theory Markdown and PDFs
+└── tests/                          # Standard-library unit tests
+```
+
+Each code/resource directory has a local `README.md` with its full immediate
+file tree and a short purpose statement for every source file. Read the local
+guide before editing that area; the package-level guides link the current
+workflow boundaries and external resource dependencies.
+
 ## Verification
 
 Unit tests and Python compilation can be run without launching the engineering

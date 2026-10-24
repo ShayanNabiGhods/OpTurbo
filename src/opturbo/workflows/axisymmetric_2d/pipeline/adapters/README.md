@@ -1,7 +1,22 @@
-# External-tool adapters
+# External-tool stage adapters
 
-Each module prepares one external stage and makes its executable, command
-arguments, resource paths, logs, and expected output visible: `geometry.py`
-for FreeCAD, `spaceclaim.py` for CAD preparation, `meshing.py` for ANSYS, and
-`fluent.py` for the Fluent/BEM worker. The stage classes use the runner's
-explicit paths and log/cancel callbacks; they do not own GUI state.
+Each adapter encapsulates one external application boundary. It receives the
+runner's candidate paths and callbacks, builds the command or input files,
+streams logs, and checks the expected stage output.
+
+```text
+adapters/
+├── __init__.py   # Adapter package marker
+├── base.py       # PipelineStage common runner/path access
+├── geometry.py   # Launch FreeCAD worker and verify STEP deliverables
+├── spaceclaim.py # Run fixed recorded SpaceClaim script; collect SCDOC
+├── meshing.py    # Prepare Workbench project/journal; run and collect mesh
+├── fluent.py     # Launch Fluent/BEM worker and validate output artifacts
+└── README.md     # This adapter map
+```
+
+Adapters do not read Tk widgets or mutate project forms. The runner owns
+candidate lifecycle and persistence; shared process functions live in
+`opturbo.pipeline.process`. The SpaceClaim adapter depends on the supplied
+recorded script and immutable handoff paths documented in
+`resources/spaceclaim/README.md`.
