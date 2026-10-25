@@ -7,7 +7,7 @@ from opturbo.app import LinePlot
 
 
 class MonitorPlotTests(unittest.TestCase):
-    def render(self, values, log_ticks=False, y_step=None, x_values=None):
+    def render(self, values, log_ticks=False, y_step=None, x_values=None, y_max=None):
         """Capture canvas calls for a representative chart."""
         plot = MagicMock()
         plot.winfo_width.return_value = 700
@@ -18,7 +18,7 @@ class MonitorPlotTests(unittest.TestCase):
         plot.x_values = x_values
         plot.log_ticks, plot.y_step = log_ticks, y_step
         # Keep the mock aligned with the current LinePlot constructor fields.
-        plot.y_max = None
+        plot.y_max = y_max
         plot.smooth, plot.markers, plot.scatter = True, False, False
         plot.marker_size = 5
         plot.COLORS = LinePlot.COLORS
@@ -37,6 +37,15 @@ class MonitorPlotTests(unittest.TestCase):
         labels = [call.kwargs.get("text") for call in plot.create_text.call_args_list]
         for label in ("0.2", "0.3", "0.4", "0.5", "0.6"):
             self.assertIn(label, labels)
+
+    def test_fixed_one_maximum_with_tenth_major_ticks(self):
+        plot = self.render([0.22, 0.51], y_step=0.1, y_max=1.0)
+        labels = [call.kwargs.get("text") for call in plot.create_text.call_args_list]
+        self.assertIn("0.2", labels)
+        self.assertIn("0.3", labels)
+        self.assertIn("0.9", labels)
+        self.assertIn("1", labels)
+        self.assertNotIn("1.1", labels)
 
     def test_empty_and_single_point(self):
         self.render([])

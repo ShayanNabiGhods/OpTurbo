@@ -80,7 +80,8 @@ class SimpleBemViewMixin:
         yscroll.grid(row=0, column=1, sticky="ns")
         self.simple_bem_plot = LinePlot(
             plot_page, "Standalone rotor performance", "Tip-speed ratio, TSR (-)",
-            "Coefficient (-)", markers=True, smooth=False, height=360,
+            "Coefficient (-)", markers=True, smooth=False, y_step=0.1,
+            y_max=1.0, height=360,
         )
         self.simple_bem_plot.pack(fill="both", expand=True)
 
