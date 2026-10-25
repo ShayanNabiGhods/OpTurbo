@@ -7,6 +7,7 @@ from ..paths import RESOURCES_ROOT
 from ..simple_bem import run_tsr_sweep
 from ..workflows.axisymmetric_2d.cfd.models import Flow, Turbine
 from ..workflows.axisymmetric_2d.cfd.resources import load_airfoil, load_blade
+from .plot import LinePlot
 
 
 class SimpleBemViewMixin:
@@ -52,12 +53,16 @@ class SimpleBemViewMixin:
         self.simple_bem_status_var = tk.StringVar(value="Ready. The sweep uses the current Workflow Settings turbine inputs.")
         ttk.Label(tab, textvariable=self.simple_bem_status_var, style="Subtitle.TLabel").grid(
             row=2, column=0, sticky="nw", pady=(8, 4))
-        results_frame = ttk.LabelFrame(tab, text="Results", padding=6)
-        results_frame.grid(row=3, column=0, sticky="nsew")
-        results_frame.rowconfigure(0, weight=1)
-        results_frame.columnconfigure(0, weight=1)
+        results_tabs = ttk.Notebook(tab)
+        results_tabs.grid(row=3, column=0, sticky="nsew")
+        table_page = ttk.Frame(results_tabs, padding=6)
+        plot_page = ttk.Frame(results_tabs, padding=6)
+        results_tabs.add(table_page, text="Results table")
+        results_tabs.add(plot_page, text="Cp / Ct plot")
+        table_page.rowconfigure(0, weight=1)
+        table_page.columnconfigure(0, weight=1)
         columns = ("tsr", "omega", "power", "cp", "ct", "convergence")
-        self.simple_bem_table = ttk.Treeview(results_frame, columns=columns, show="headings", height=15)
+        self.simple_bem_table = ttk.Treeview(table_page, columns=columns, show="headings", height=15)
         headings = (
             ("tsr", "TSR (-)", 100),
             ("omega", "Angular speed (rad/s)", 175),
@@ -69,10 +74,15 @@ class SimpleBemViewMixin:
         for name, title, width in headings:
             self.simple_bem_table.heading(name, text=title)
             self.simple_bem_table.column(name, width=width, anchor="center")
-        yscroll = ttk.Scrollbar(results_frame, orient="vertical", command=self.simple_bem_table.yview)
+        yscroll = ttk.Scrollbar(table_page, orient="vertical", command=self.simple_bem_table.yview)
         self.simple_bem_table.configure(yscrollcommand=yscroll.set)
         self.simple_bem_table.grid(row=0, column=0, sticky="nsew")
         yscroll.grid(row=0, column=1, sticky="ns")
+        self.simple_bem_plot = LinePlot(
+            plot_page, "Standalone rotor performance", "Tip-speed ratio, TSR (-)",
+            "Coefficient (-)", markers=True, smooth=False, height=360,
+        )
+        self.simple_bem_plot.pack(fill="both", expand=True)
 
     def _run_simple_bem_sweep(self) -> None:
         """Run the inexpensive rotor-only solver from live workflow settings."""
@@ -123,14 +133,21 @@ class SimpleBemViewMixin:
 
         for item in self.simple_bem_table.get_children():
             self.simple_bem_table.delete(item)
+        tsrs: list[float] = []
+        cp_values: list[float] = []
+        ct_values: list[float] = []
         for result in results:
             performance = result.performance
+            tsrs.append(result.tip_speed_ratio)
+            cp_values.append(performance.cp)
+            ct_values.append(performance.ct)
             self.simple_bem_table.insert("", "end", values=(
                 f"{result.tip_speed_ratio:.3g}", f"{result.omega_rad_s:.4g}",
                 f"{performance.power:.6g}", f"{performance.cp:.6g}",
                 f"{performance.ct:.6g}",
                 f"{result.converged_stations}/{result.station_count}",
             ))
+        self.simple_bem_plot.set_series([("Cp", cp_values), ("Ct", ct_values)], x_values=tsrs)
         self.simple_bem_status_var.set(
             f"Completed {len(results)} CFD-free BEM operating points using {tip_model} tip-loss correction."
         )

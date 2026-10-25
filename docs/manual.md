@@ -139,7 +139,7 @@ Set **Minimum TSR**, **Maximum TSR**, and **TSR interval**. The sweep includes v
 
 Choose **Prandtl** or **Bontempo 2025** for tip loss. Prandtl is the default and applies conventional tip and root loss. Bontempo applies its empirical tip correction with Prandtl root loss; its coefficients remain the values configured in Workflow Settings. Bontempo is a duct-calibrated correction and may not be appropriate for an unducted rotor.
 
-The result table reports angular speed, power, Cp, Ct, and the number of radial stations whose induction iteration converged. A point can finish with some unconverged stations; review that count before using its performance values. These results are a reduced-order estimate from the bundled blade/polar data, not a CFD result or turbine certification.
+The **Results table** reports angular speed, power, Cp, Ct, and the number of radial stations whose induction iteration converged. The **Cp / Ct plot** sub-tab plots both coefficients against the actual TSR values from the sweep. A point can finish with some unconverged stations; review that count before using its performance values. These results are a reduced-order estimate from the bundled blade/polar data, not a CFD result or turbine certification.
 
 ## BEM loss correction {#bem-model}
 

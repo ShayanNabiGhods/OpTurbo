@@ -7,7 +7,7 @@ from opturbo.app import LinePlot
 
 
 class MonitorPlotTests(unittest.TestCase):
-    def render(self, values, log_ticks=False, y_step=None):
+    def render(self, values, log_ticks=False, y_step=None, x_values=None):
         """Capture canvas calls for a representative chart."""
         plot = MagicMock()
         plot.winfo_width.return_value = 700
@@ -15,6 +15,7 @@ class MonitorPlotTests(unittest.TestCase):
         plot.title, plot.x_label, plot.y_label = "Test", "Iteration (-)", "Value (-)"
         plot.palette = dict.fromkeys(("text", "axis", "muted", "grid"), "black")
         plot.series = [("Test", values)]
+        plot.x_values = x_values
         plot.log_ticks, plot.y_step = log_ticks, y_step
         # Keep the mock aligned with the current LinePlot constructor fields.
         plot.y_max = None
@@ -40,3 +41,16 @@ class MonitorPlotTests(unittest.TestCase):
     def test_empty_and_single_point(self):
         self.render([])
         self.render([0.3], y_step=0.1)
+
+    def test_numeric_x_values_are_used_for_chart_ticks(self):
+        plot = self.render([0.22, 0.51, 0.37], x_values=[4.0, 5.0, 7.0])
+        labels = [call.kwargs.get("text") for call in plot.create_text.call_args_list]
+        self.assertIn("4", labels)
+        self.assertIn("5.5", labels)
+        self.assertIn("7", labels)
+        line = next(call for call in plot.create_line.call_args_list
+                    if call.kwargs.get("width") == 2)
+        coordinates = line.args
+        self.assertAlmostEqual(coordinates[0], 70)
+        self.assertAlmostEqual(coordinates[2], 70 + (682 - 70) / 3)
+        self.assertAlmostEqual(coordinates[4], 682)

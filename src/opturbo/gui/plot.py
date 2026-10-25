@@ -20,11 +20,20 @@ class LinePlot(tk.Canvas):
         self.smooth, self.markers, self.scatter, self.marker_size = smooth, markers, scatter, marker_size
         self.y_max = y_max
         self.series: list[tuple[str, list[float]]] = []
+        self.x_values: list[float] | None = None
         self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
         self.bind("<Configure>", lambda _event: self.redraw())
 
-    def set_series(self, series: list[tuple[str, list[float]]]) -> None:
+    def set_series(self, series: list[tuple[str, list[float]]],
+                   x_values: list[float] | None = None) -> None:
+        """Set plotted lines and optionally provide their numeric x coordinates."""
+        if x_values is not None:
+            if not x_values or any(not math.isfinite(value) for value in x_values):
+                raise ValueError("Numeric x coordinates must be a non-empty finite list.")
+            if any(len(values) != len(x_values) for _, values in series):
+                raise ValueError("Every plotted series must match the numeric x-coordinate count.")
         self.series = series
+        self.x_values = x_values
         self.redraw()
 
     def set_palette(self, palette: dict[str, str]) -> None:
@@ -65,18 +74,44 @@ class LinePlot(tk.Canvas):
                 if low < position < high:
                     y_minor = bottom - (position - low) * (bottom - top) / (high - low)
                     self.create_line(left, y_minor, right, y_minor, fill=self.palette["grid"], dash=(2, 4))
-        longest = max((len(items) for _, items in self.series), default=0)
-        x_max = max(2, longest)
-        x_step = max(1, math.ceil((x_max - 1) / 6))
-        for index in range(1, x_max + 1):
-            x = left + (index - 1) * (right - left) / (x_max - 1)
-            major = (index - 1) % x_step == 0 or index == x_max
-            self.create_line(x, top, x, bottom, fill=self.palette["axis"] if major else self.palette["grid"], dash=() if major else (2, 4))
-            if major:
-                self.create_text(x, bottom + 12, text=str(index), fill=self.palette["muted"], font=("Segoe UI", 8))
-            if index < x_max and x_step == 1:
-                middle = x + (right - left) / (x_max - 1) / 2
-                self.create_line(middle, top, middle, bottom, fill=self.palette["grid"], dash=(2, 4))
+        if self.x_values:
+            x_low, x_high = min(self.x_values), max(self.x_values)
+            if math.isclose(x_low, x_high):
+                padding = max(abs(x_low) * 0.05, 0.5)
+                x_low, x_high = x_low - padding, x_high + padding
+            tick_count = min(6, max(2, len(set(self.x_values))))
+            x_ticks = [x_low + index * (x_high - x_low) / (tick_count - 1)
+                       for index in range(tick_count)]
+            for index, value in enumerate(x_ticks):
+                x = left + (value - x_low) * (right - left) / (x_high - x_low)
+                self.create_line(x, top, x, bottom, fill=self.palette["axis"], stipple="gray50")
+                self.create_text(x, bottom + 12, text=f"{value:.3g}",
+                                 fill=self.palette["muted"], font=("Segoe UI", 8))
+                if index < len(x_ticks) - 1:
+                    for subdivision in range(1, 5):
+                        fraction = subdivision / 5
+                        minor = x + (right - left) * (x_ticks[index + 1] - value) \
+                            / (x_high - x_low) * fraction
+                        self.create_line(minor, top, minor, bottom,
+                                         fill=self.palette["grid"], dash=(2, 4))
+            def x_position(index: int) -> float:
+                value = self.x_values[index]
+                return left + (value - x_low) * (right - left) / (x_high - x_low)
+        else:
+            longest = max((len(items) for _, items in self.series), default=0)
+            x_max = max(2, longest)
+            x_step = max(1, math.ceil((x_max - 1) / 6))
+            for index in range(1, x_max + 1):
+                x = left + (index - 1) * (right - left) / (x_max - 1)
+                major = (index - 1) % x_step == 0 or index == x_max
+                self.create_line(x, top, x, bottom, fill=self.palette["axis"] if major else self.palette["grid"], dash=() if major else (2, 4))
+                if major:
+                    self.create_text(x, bottom + 12, text=str(index), fill=self.palette["muted"], font=("Segoe UI", 8))
+                if index < x_max and x_step == 1:
+                    middle = x + (right - left) / (x_max - 1) / 2
+                    self.create_line(middle, top, middle, bottom, fill=self.palette["grid"], dash=(2, 4))
+            def x_position(index: int) -> float:
+                return left + index * (right - left) / (x_max - 1)
         if not values:
             self.create_text(width / 2, height / 2, text="No results yet", fill=self.palette["muted"])
             return
@@ -84,7 +119,7 @@ class LinePlot(tk.Canvas):
             color = self.COLORS[series_index % len(self.COLORS)]
             coordinates: list[float] = []
             for index, value in enumerate(items):
-                x = left + index * (right - left) / (x_max - 1)
+                x = x_position(index)
                 y = bottom - (value - low) * (bottom - top) / (high - low)
                 coordinates.extend((x, y))
             if len(coordinates) >= 4 and not self.scatter:

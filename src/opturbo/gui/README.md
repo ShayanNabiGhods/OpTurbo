@@ -27,7 +27,7 @@ gui/
 ├── optimization_worker.py     # Background optimization worker lifecycle
 ├── monitor_view.py             # Monitor tab and result panels
 ├── monitor_results.py          # Candidate/history event ingestion and updates
-├── simple_bem_view.py          # Standalone TSR sweep form and result table
+├── simple_bem_view.py          # Standalone TSR sweep form, table and Cp/Ct plot
 ├── accessibility_view.py       # Accessibility preferences UI
 ├── appearance.py               # Runtime theme and numeric-entry behavior
 ├── labels.py                   # Field labels and concise help descriptions

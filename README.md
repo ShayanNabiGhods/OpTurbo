@@ -72,7 +72,8 @@ folder outside the source-code folder, for example
 - **Simple BEM** — calculate a rotor-only performance curve without launching
   geometry, duct/domain design, meshing, or CFD. The panel uses current flow
   and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
-  a selectable tip-loss correction, and a user-defined TSR interval.
+  a selectable tip-loss correction, and a user-defined TSR interval. Results
+  appear in a table and in a Cp/Ct plot against TSR.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation

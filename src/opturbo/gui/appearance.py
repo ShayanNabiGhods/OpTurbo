@@ -124,7 +124,8 @@ class AppearanceMixin:
         for canvas in (getattr(self, "domain_canvas", None), getattr(self, "duct_canvas", None)):
             if canvas:
                 canvas.configure(background=self.palette["canvas"])
-        for plot in (getattr(self, name, None) for name in ("performance_plot", "bem_plot", "residual_plot", "outer_plot")):
+        for plot in (getattr(self, name, None) for name in (
+                "performance_plot", "bem_plot", "residual_plot", "outer_plot", "simple_bem_plot")):
             if plot:
                 plot.set_palette({key: self.palette[key] for key in ("canvas", "text", "muted", "grid", "axis")})
         if getattr(self, "performance_plot", None):
