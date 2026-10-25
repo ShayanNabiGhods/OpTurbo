@@ -19,7 +19,7 @@ class LayoutMixin:
         menu.add_cascade(label="File", menu=file_menu)
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="About", command=lambda: messagebox.showinfo(
-            "About OpTurbo", "OpTurbo V0.0.1\nDAWT geometry-to-CFD genetic optimization"))
+            "About OpTurbo", "OpTurbo V0.3.1\nDAWT design and performance analysis"))
         help_menu.add_command(label="Theory Guide (PDF)", command=lambda: open_guide("theory.pdf"))
         menu.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menu)
@@ -39,6 +39,7 @@ class LayoutMixin:
         self._build_project_tab()
         self._build_design_tab()
         self._build_workflow_tab()
+        self._build_simple_bem_tab()
         self._build_mesh_study_tab()
         self._build_optimization_tab()
         self._build_monitor_tab()

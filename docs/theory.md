@@ -1,9 +1,9 @@
 # OpTurbo Theory Guide
 
-**Engineering ideas behind the geometry, mesh, CFD/BEM coupling, and search**
-Companion theory reference for the axisymmetric 2D workflow · October 2026
+**Engineering ideas behind geometry, mesh, CFD/BEM coupling, standalone BEM, and search**
+Companion theory reference for OpTurbo v0.3.1 · October 2026
 
-This guide connects the equations and numerical models to the controls shown in the application. OpTurbo is a reduced-order design and analysis workflow. It combines a two-dimensional axisymmetric CFD domain and actuator-disk loads with a radial blade-element/momentum calculation. Its coefficients are useful for comparing candidates under a consistent setup; they are not, by themselves, a complete three-dimensional turbine certification.
+This guide connects the equations and numerical models to the controls shown in the application. OpTurbo combines an axisymmetric CFD and actuator-disk workflow with a separate standalone radial blade-element/momentum calculation. Its coefficients are useful for comparing candidates under a consistent setup; they are not, by themselves, a complete three-dimensional turbine certification.
 
 ## System overview {#theory-overview}
 
@@ -118,6 +118,46 @@ P = omega * Q;     Cp = P / (0.5*rho*pi*R^2*U_inf^3)
 $$
 
 These equations describe the code's discrete station calculation and sign convention. The branch does not iterate a textbook closed-form BEM momentum equation in isolation: Fluent supplies the local velocities, and the BEM calculation maps those sampled velocities and blade polars to a new actuator source field.
+
+### Standalone BEM sweep {#theory-simple-bem}
+
+The **Simple BEM** tab solves the induction factors directly from blade-element and annular momentum balance. It has no Fluent velocity field and uses the bundled blade and airfoil tables as its rotor model. For each selected tip-speed ratio, it derives angular speed as:
+
+$$
+lambda = omega * R / U_inf;     omega = lambda * U_inf / R
+$$
+
+At radial station `r`, the solver starts from `a = 0.2` and `a_prime = 0`. Each iteration computes the disk-relative velocities, flow angle, Reynolds number, polar coefficients, and loss factor using the same definitions of `Vx`, `Vtheta`, `W`, `phi`, `alpha`, `Re`, `Cn`, and `Ct` given above. The local solidity is `sigma = B*c/(2*pi*r)`. It then computes the next induction estimates from annular momentum balance:
+
+$$
+a_new = 1 / (1 + 4*F*sin(phi)^2 / (sigma*Cn))
+$$
+
+$$
+a_prime_new = 1 / (4*F*sin(phi)*cos(phi) / (sigma*Ct) - 1)
+$$
+
+The implementation clips `a` to `[0, 0.95]` and `a_prime` to `[-0.5, 1]`. When normal loading is non-positive, it sets the next `a` estimate to zero; if tangential loading is near zero or its denominator is singular, it sets `a_prime` to zero. To stabilize the fixed-point iteration, each update uses 70% of the new estimate and 30% of the previous estimate:
+
+$$
+a = 0.7*a_new + 0.3*a_old;     a_prime = 0.7*a_prime_new + 0.3*a_prime_old
+$$
+
+Iteration stops when both induction changes fall below `1e-5` or after 250 iterations. The result table counts stations that met this criterion. This compact solver uses clipping and relaxation; it does not add a separate Glauert/Buhl high-induction correction, so heavily loaded operation needs extra scrutiny.
+
+After the induction iteration at each station, the blade-element loads per unit span are evaluated as:
+
+$$
+dT/dr = 0.5*rho*W^2*B*c*Cn*F;     dQ/dr = 0.5*rho*W^2*B*c*Ct*F*r
+$$
+
+The solver integrates these loads across the supplied station widths, using half weights at the first and last station. It then reports:
+
+$$
+P = omega*Q;     Cp = P / (0.5*rho*pi*R^2*U_inf^3);     Ct_rotor = T / (0.5*rho*pi*R^2*U_inf^2)
+$$
+
+Here positive `T` and `Ct_rotor` mean thrust in the incoming-flow direction. The standalone model reuses the current flow and rotor values and scales the bundled NTNU radius and chord distribution together when rotor radius differs from its 0.45 m reference. The airfoil interpolation clamps angle and Reynolds number to the S826 table's bounds. A curve is only as representative as the bundled blade and polar data and selected correction; it is not independent validation of an arbitrary turbine design.
 
 ## Tip and root losses {#theory-losses}
 

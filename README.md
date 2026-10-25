@@ -49,7 +49,7 @@ both PDFs with `python scripts/build_documentation.py`.
 
 Tkinter is included with the standard Windows Python installer. Check the
 executable paths on the **Project** tab before running. The default paths are
-configured for FreeCAD 1.1 and ANSYS `v241`, matching the defaults in the
+  configured for FreeCAD 1.1 and ANSYS `v242`, matching the defaults in the
 project model. Choose a workflow save
 folder outside the source-code folder, for example
 `C:\OpTurbo\Projects\baseline-study`.
@@ -69,6 +69,10 @@ folder outside the source-code folder, for example
   CFD/BEM settings include turbulence models and their residual criteria,
   discretization, pressure-velocity coupling, iteration controls, and loss
   correction.
+- **Simple BEM** — calculate a rotor-only performance curve without launching
+  geometry, duct/domain design, meshing, or CFD. The panel uses current flow
+  and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
+  a selectable tip-loss correction, and a user-defined TSR interval.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation
@@ -159,6 +163,7 @@ run.py
 src/opturbo/
 ├── app.py                         # Public GUI entry point and compatibility exports
 ├── gui/                           # Window, settings forms, design previews, result views
+├── simple_bem.py                  # CFD-free induction solver and TSR sweep
 ├── domain/                        # Project models and engineering-input validation
 ├── workflows/
 │   ├── selection.py               # Explicit workflow ID to implementation map

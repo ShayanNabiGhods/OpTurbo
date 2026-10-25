@@ -1,13 +1,13 @@
 # OpTurbo User Manual
 
 **Build, evaluate, optimize, and review an axisymmetric ducted wind-turbine design**
-User guide for the `refactor/workflow-architecture-20261024` branch · October 2026
+User guide for OpTurbo v0.3.1 · October 2026
 
-This guide explains the controls that are present in this branch. The standard workflow uses FreeCAD, SpaceClaim, ANSYS Meshing, and Fluent, with a blade-element/momentum (BEM) calculation coupled to Fluent. Engineering programs and valid licenses are required for a full evaluation. The smaller project, geometry-preview, and configuration steps can be completed before those programs are installed.
+This guide explains the controls in OpTurbo v0.3.1. The standard workflow uses FreeCAD, SpaceClaim, ANSYS Meshing, and Fluent, with a blade-element/momentum (BEM) calculation coupled to Fluent. A separate Simple BEM tab calculates rotor performance without running that workflow. Engineering programs and valid licenses are required for a full CFD evaluation. The smaller project, geometry-preview, and configuration steps can be completed before those programs are installed.
 
 ## Start here {#start-here}
 
-1. Install Windows Python 3.10 or newer with Tkinter, FreeCAD 1.1, and the ANSYS release used by your project. The default executable paths target ANSYS v241.
+1. Install Windows Python 3.10 or newer with Tkinter, FreeCAD 1.1, and the ANSYS release used by your project. The default executable paths target ANSYS v242.
 2. Open PowerShell in the project folder and run `python run.py`.
 3. In **Project**, select the workflow, give the project a name, choose a results folder outside the source tree, and check all four executable paths.
 4. In **Design**, inspect the selected duct type and preview. Start with a known valid design and narrow variable ranges.
@@ -131,6 +131,16 @@ Fluent and BEM share the operating-point inputs. Use SI units here:
 
 The CFD geometry and the BEM rotor dimensions must describe the same rotor. The application reads blade geometry and airfoil data from the bundled CFD tables; those are workflow resources, not controls in the GUI.
 
+## Simple BEM tab {#simple-bem}
+
+The **Simple BEM** tab calculates a rotor performance curve without creating a duct/domain, meshing, or starting Fluent. It uses the flow speed, density, viscosity, rotor radius, hub radius, blade count, pitch, and radial-station count currently shown in **Workflow Settings → CFD / BEM**. Unsaved edits are used immediately. The calculation uses the bundled NTNU blade geometry and S826 lift/drag polar tables. Blade radius and chord are scaled together when the selected rotor radius differs from the table's 0.45 m reference radius; the blade span must still fit between the selected hub and rotor tip.
+
+Set **Minimum TSR**, **Maximum TSR**, and **TSR interval**. The sweep includes values reached by repeatedly adding the interval while the result remains at or below the maximum, with a limit of 101 points per run. For example, 4 to 8 in steps of 0.5 evaluates 4, 4.5, …, 8. Rotor speed is calculated for each point from `omega = TSR * free-stream speed / rotor radius`.
+
+Choose **Prandtl** or **Bontempo 2025** for tip loss. Prandtl is the default and applies conventional tip and root loss. Bontempo applies its empirical tip correction with Prandtl root loss; its coefficients remain the values configured in Workflow Settings. Bontempo is a duct-calibrated correction and may not be appropriate for an unducted rotor.
+
+The result table reports angular speed, power, Cp, Ct, and the number of radial stations whose induction iteration converged. A point can finish with some unconverged stations; review that count before using its performance values. These results are a reduced-order estimate from the bundled blade/polar data, not a CFD result or turbine certification.
+
 ## BEM loss correction {#bem-model}
 
 **Tip-loss correction** selects **Prandtl** or **Bontempo 2025**. Prandtl includes conventional tip and root loss. Bontempo replaces the tip factor with the duct-specific empirical correction and multiplies it by the Prandtl root-loss factor, so root loss remains active. It is a calibration choice and may not suit every duct or operating regime.
@@ -190,7 +200,7 @@ The log shows pipeline stages and Fluent output. **Candidates** plots performanc
 
 ## Accessibility tab {#accessibility}
 
-The display controls change the interface immediately and are saved with the project. **Theme** selects light or dark appearance. **Text size** scales interface fonts. **High contrast** uses a black background and bright foreground/focus colors. **Accent color** changes selected tabs, primary buttons, and progress. **Candidate marker size** and **Outer Cp / Ct marker size** set plot markers. **Table row spacing** adds vertical pixels to table rows. Use Tab/Shift+Tab to move between controls, Space to toggle a focused checkbox, and Enter to activate a focused button. Hover controls for short tooltips; the question-mark buttons open the relevant manual section.
+The display controls change the interface immediately and are saved with the project. **Theme** selects light or dark appearance. **Text size** scales interface fonts. **High contrast** uses a black background and bright foreground/focus colors. **Accent color** changes selected tabs, primary buttons, and progress. **Candidate marker size** and **Outer Cp / Ct marker size** set plot markers. **Table row spacing** adds vertical pixels to table rows. Use Tab/Shift+Tab to move between controls, Space to toggle a focused checkbox, and Enter to activate a focused button. The **Help** button in the top bar opens this manual.
 
 ## Candidate pipeline and saved files {#candidate-results}
 

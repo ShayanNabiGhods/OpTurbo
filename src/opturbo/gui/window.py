@@ -26,6 +26,7 @@ from .optimization_view import OptimizationViewMixin
 from .optimization_worker import OptimizationWorkerMixin
 from .project_view import ProjectViewMixin
 from .settings_form import SettingsFormMixin
+from .simple_bem_view import SimpleBemViewMixin
 from .workflow_settings import WorkflowSettingsMixin
 
 
@@ -50,6 +51,7 @@ class OpTurboWindow(
     OptimizationWorkerMixin,
     MonitorViewMixin,
     MonitorResultsMixin,
+    SimpleBemViewMixin,
     LayoutMixin,
 ):
     """Compose the application views and initialize their shared state."""

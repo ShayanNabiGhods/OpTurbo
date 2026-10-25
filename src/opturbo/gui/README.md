@@ -27,6 +27,7 @@ gui/
 ├── optimization_worker.py     # Background optimization worker lifecycle
 ├── monitor_view.py             # Monitor tab and result panels
 ├── monitor_results.py          # Candidate/history event ingestion and updates
+├── simple_bem_view.py          # Standalone TSR sweep form and result table
 ├── accessibility_view.py       # Accessibility preferences UI
 ├── appearance.py               # Runtime theme and numeric-entry behavior
 ├── labels.py                   # Field labels and concise help descriptions
@@ -44,5 +45,8 @@ The root window composes focused mixins so each tab's controls stay near their
 event handlers. Mixins share state through the root window instance. Keep
 engineering validation in `opturbo.domain` and external execution in the
 workflow pipeline; UI modules should not call FreeCAD, SpaceClaim, Meshing, or
-Fluent directly. The single Help button in the top header opens the user manual;
+Fluent directly. `simple_bem_view.py` reads the current flow and rotor fields,
+then calls `opturbo.simple_bem` with the bundled blade and polar tables. This
+panel runs locally and does not start the workflow pipeline. The single Help
+button in the top header opens the user manual;
 the Help menu retains the theory guide and About dialog.

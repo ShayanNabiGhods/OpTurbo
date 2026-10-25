@@ -12,6 +12,7 @@ tests/
 ├── test_pipeline.py        # Candidate stages, failures and result handling
 ├── test_overlap.py         # Same-generation preparation/CFD overlap rules
 ├── test_tip_loss.py        # BEM loss factors and saved project settings
+├── test_simple_bem.py      # Standalone induction solver and TSR sweep
 ├── test_turbulence_ui.py   # CFD settings and turbulence UI choices
 ├── test_monitor_plot.py    # Plot axes, scaling and sparse result points
 └── README.md               # This test map
