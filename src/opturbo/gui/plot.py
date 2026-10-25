@@ -12,13 +12,15 @@ class LinePlot(tk.Canvas):
     def __init__(self, parent: tk.Misc, title: str, x_label: str, y_label: str,
                  log_ticks: bool = False, y_step: float | None = None,
                  smooth: bool = True, markers: bool = False, scatter: bool = False,
-                 marker_size: int = 5, y_max: float | None = None, **kwargs):
+                 marker_size: int = 5, y_max: float | None = None,
+                 x_step: float | None = None, **kwargs):
         super().__init__(parent, background="white", highlightthickness=1,
                          highlightbackground="#c8ccd2", **kwargs)
         self.title, self.x_label, self.y_label = title, x_label, y_label
         self.log_ticks, self.y_step = log_ticks, y_step
         self.smooth, self.markers, self.scatter, self.marker_size = smooth, markers, scatter, marker_size
         self.y_max = y_max
+        self.x_step = x_step
         self.series: list[tuple[str, list[float]]] = []
         self.x_values: list[float] | None = None
         self.palette = {"canvas": "white", "text": "#20242a", "muted": "#606771", "grid": "#edf0f3", "axis": "#69717d"}
@@ -79,9 +81,18 @@ class LinePlot(tk.Canvas):
             if math.isclose(x_low, x_high):
                 padding = max(abs(x_low) * 0.05, 0.5)
                 x_low, x_high = x_low - padding, x_high + padding
-            tick_count = min(6, max(2, len(set(self.x_values))))
-            x_ticks = [x_low + index * (x_high - x_low) / (tick_count - 1)
-                       for index in range(tick_count)]
+            if self.x_step is not None:
+                if self.x_step <= 0:
+                    raise ValueError("The x-axis major interval must be positive.")
+                first_tick = math.ceil(x_low / self.x_step)
+                last_tick = math.floor(x_high / self.x_step)
+                x_ticks = [tick * self.x_step for tick in range(first_tick, last_tick + 1)]
+                if not x_ticks:
+                    x_ticks = [x_low, x_high] if not math.isclose(x_low, x_high) else [x_low]
+            else:
+                tick_count = min(6, max(2, len(set(self.x_values))))
+                x_ticks = [x_low + index * (x_high - x_low) / (tick_count - 1)
+                           for index in range(tick_count)]
             for index, value in enumerate(x_ticks):
                 x = left + (value - x_low) * (right - left) / (x_high - x_low)
                 self.create_line(x, top, x, bottom, fill=self.palette["axis"], stipple="gray50")

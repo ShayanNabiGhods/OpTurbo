@@ -7,7 +7,7 @@ from opturbo.app import LinePlot
 
 
 class MonitorPlotTests(unittest.TestCase):
-    def render(self, values, log_ticks=False, y_step=None, x_values=None, y_max=None):
+    def render(self, values, log_ticks=False, y_step=None, x_values=None, y_max=None, x_step=None):
         """Capture canvas calls for a representative chart."""
         plot = MagicMock()
         plot.winfo_width.return_value = 700
@@ -19,6 +19,7 @@ class MonitorPlotTests(unittest.TestCase):
         plot.log_ticks, plot.y_step = log_ticks, y_step
         # Keep the mock aligned with the current LinePlot constructor fields.
         plot.y_max = y_max
+        plot.x_step = x_step
         plot.smooth, plot.markers, plot.scatter = True, False, False
         plot.marker_size = 5
         plot.COLORS = LinePlot.COLORS
@@ -63,3 +64,10 @@ class MonitorPlotTests(unittest.TestCase):
         self.assertAlmostEqual(coordinates[0], 70)
         self.assertAlmostEqual(coordinates[2], 70 + (682 - 70) / 3)
         self.assertAlmostEqual(coordinates[4], 682)
+
+    def test_numeric_x_major_ticks_follow_one_unit_interval(self):
+        plot = self.render([0.2, 0.4, 0.6, 0.8], x_values=[4.0, 5.0, 6.0, 7.0], x_step=1.0)
+        labels = [call.kwargs.get("text") for call in plot.create_text.call_args_list]
+        for label in ("4", "5", "6", "7"):
+            self.assertIn(label, labels)
+        self.assertNotIn("4.5", labels)
