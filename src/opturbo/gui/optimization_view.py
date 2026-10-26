@@ -28,6 +28,9 @@ class OptimizationViewMixin:
         actions.grid(row=50, column=0, columnspan=3, sticky="ew", pady=16)
         self.single_button = ttk.Button(actions, text="Evaluate current design", command=self._run_single)
         self.single_button.pack(fill="x", pady=3)
+        self.mesh_button = ttk.Button(actions, text="Generate open-turbine mesh", command=self._run_open_turbine_mesh)
+        self.mesh_button.pack(fill="x", pady=3)
+        self.mesh_button.pack_forget()
         self.start_button = ttk.Button(actions, text="Start GA optimization", style="Accent.TButton", command=self._run_ga)
         self.start_button.pack(fill="x", pady=3)
         self.resume_button = ttk.Button(actions, text="Resume previous optimization", command=self._resume_ga,

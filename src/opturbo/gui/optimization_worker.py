@@ -22,7 +22,7 @@ class OptimizationWorkerMixin:
             assert self.store is not None
             candidate = self.store.candidate_dir(0, 1)
             workflow = get_workflow(self.config_model.workflow_id, APP_ROOT)
-            if getattr(workflow, "geometry_only", False):
+            if getattr(workflow, "preparation_only", False):
                 assembly = self._runner().generate_assembly(self.config_model, candidate)
                 self.events.put(("done", f"STEP assembly created: {assembly}"))
                 return
@@ -34,6 +34,16 @@ class OptimizationWorkerMixin:
                      "objective": self.config_model.ga.objective, "genome": genome, **result}
             self.events.put(("result", event))
             self.events.put(("done", "Current design evaluation completed"))
+        except Exception as error:
+            self.events.put(("error", str(error)))
+
+    def _open_turbine_mesh_worker(self) -> None:
+        """Build the open-turbine mesh from its manually prepared SCDOC."""
+        try:
+            assert self.store is not None
+            candidate = self.store.candidate_dir(0, 1)
+            mesh = self._runner().generate_mesh(self.config_model, candidate)
+            self.events.put(("done", f"Open-turbine mesh created: {mesh}"))
         except Exception as error:
             self.events.put(("error", str(error)))
 

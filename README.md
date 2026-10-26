@@ -76,9 +76,9 @@ folder outside the source-code folder, for example
   appear in a table and in a Cp/Ct plot against TSR.
 - **2D axisymmetric open turbine** — generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
-  creating a duct. The workflow stops after FreeCAD export and places a unique
-  handoff folder under `C:\OpTurbo\Temp Files` for a user-authored SpaceClaim
-  script and later workflow stages.
+  creating a duct. Run the supplied SpaceClaim script manually, then generate
+  the mesh with app mesh settings. Fluent case creation and solving are not
+  included yet.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation
@@ -107,11 +107,12 @@ The ducted workflow passes each candidate through these stages:
 Failed candidates are recorded with diagnostic details in their candidate
 folder and assigned a low fitness so the remaining optimization can continue.
 
-The **2D axisymmetric open turbine** workflow runs only FreeCAD. It writes the
-four profile STEP files and `open_turbine_assembly.step` to the candidate's
-`01_geometry/` folder, then copies them to the next unused
-`C:\OpTurbo\Temp Files\open_turbine_run_NNN\` folder. It does not invoke
-SpaceClaim, ANSYS Meshing, Fluent, or optimization.
+The **2D axisymmetric open turbine** workflow runs FreeCAD, pauses for the
+user's SpaceClaim script, then runs ANSYS Meshing. Its duct-free meshing script
+uses domain, resolution, and hub sizing and omits duct sizing and duct-wall
+inflation. Mesh artifacts are retained under the candidate's `03_mesh/` folder
+and copied to a unique `C:\OpTurbo\Temp Files\open_turbine_mesh_run_NNN\`
+handoff folder. Fluent case creation and solving are left for the user.
 
 ### Overlap preparation
 
@@ -202,6 +203,7 @@ src/opturbo/
 resources/
 ├── spaceclaim/                    # Current workflow's recorded SpaceClaim script
 ├── meshing/                       # Current workflow's ANSYS scripts
+├── workflows/axisymmetric_2d_open_turbine/ # Open-turbine duct-free mesh script
 ├── fluent/                        # Baseline case and UDF resources
 └── cfd_tables/                    # Blade, airfoil, and operating-point data
 ```

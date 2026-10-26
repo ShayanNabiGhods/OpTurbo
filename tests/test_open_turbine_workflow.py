@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+import sys
 
 from opturbo.models import ProjectConfig
 from opturbo.workflows import available_workflows, get_workflow
@@ -25,13 +26,33 @@ class OpenTurbineWorkflowTests(unittest.TestCase):
         self.assertEqual(get_workflow(workflow_id, Path.cwd()).title,
                          "2D axisymmetric open turbine")
 
-    def test_runner_has_no_downstream_engineering_stages(self):
+    def test_runner_stops_before_fluent_and_exposes_mesh_preparation(self):
         workflow = get_workflow("axisymmetric_2d_open_turbine", Path.cwd())
         runner = workflow.create_runner()
-        self.assertTrue(workflow.geometry_only)
+        self.assertTrue(workflow.preparation_only)
         self.assertTrue(hasattr(runner, "generate_assembly"))
-        for stage in ("spaceclaim_stage", "meshing_stage", "cfd_stage"):
+        self.assertTrue(hasattr(runner, "generate_mesh"))
+        for stage in ("spaceclaim_stage", "cfd_stage"):
             self.assertFalse(hasattr(runner, stage))
+
+    def test_open_mesh_script_uses_no_duct_controls(self):
+        workflow = get_workflow("axisymmetric_2d_open_turbine", Path.cwd())
+        runner = workflow.create_runner()
+        script = runner._mesh_script(ProjectConfig(), OpenTurbineParameters())
+        self.assertNotIn("DUCT", script)
+        self.assertNotIn("duct-sizing", script)
+        self.assertIn("resolution-sizing", script)
+        self.assertIn("hub-sizing", script)
+
+    def test_mesh_preparation_requires_manual_spaceclaim_document(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            config = ProjectConfig()
+            config.tools.workbench = sys.executable
+            config.tools.handoff_dir = str(root / "handoff")
+            runner = get_workflow("axisymmetric_2d_open_turbine", Path.cwd()).create_runner()
+            with self.assertRaisesRegex(FileNotFoundError, "Run the open-turbine SpaceClaim script first"):
+                runner.generate_mesh(config, root / "candidate")
 
     def test_open_assembly_contains_no_duct_step(self):
         self.assertEqual(set(OUTPUT_NAMES), {"domain", "resolution", "actuator", "hub", "assembly"})

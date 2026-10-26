@@ -28,7 +28,8 @@ future workflow-only settings can be stored under
 `ProjectConfig.workflow_settings[workflow_id]`. Bundle new workflow assets in
 `resources/workflows/<workflow_id>/` and have that workflow select the folder.
 
-`axisymmetric_2d_open_turbine/` is the geometry-only open-turbine workflow. Its
+`axisymmetric_2d_open_turbine/` prepares open-turbine geometry and mesh. Its
 local README lists every file in the package. It creates a domain, resolution
-region, actuator disk, hub, and compound STEP assembly without a duct, then
-stops before SpaceClaim, meshing, or solver stages.
+region, actuator disk, hub, and compound STEP assembly without a duct, pauses
+for the user's SpaceClaim script, and then runs duct-free meshing. Fluent case
+creation and solving remain outside this workflow.

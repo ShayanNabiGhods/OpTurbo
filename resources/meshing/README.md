@@ -13,6 +13,11 @@ meshing/
 
 `mesh_script.py` is executed in the ANSYS Meshing/Workbench environment and
 uses the candidate geometry and configured sizing controls. The extractor is
-called after meshing to collect the `.msh` output expected by Fluent. Keep
+called after meshing to collect the `.msh` output expected by Fluent. The
+open-turbine workflow uses a separate duct-free script in
+`resources/workflows/axisymmetric_2d_open_turbine/`. Keep ducted workflow
 changes aligned with the adapter in
 `src/opturbo/workflows/axisymmetric_2d/pipeline/adapters/meshing.py`.
+
+The open-turbine workflow uses a separate duct-free script in
+`resources/workflows/axisymmetric_2d_open_turbine/`.
