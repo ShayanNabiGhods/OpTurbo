@@ -65,7 +65,7 @@ class OptimizationControlsMixin:
             self.performance_plot.title = "Run performance history" if run_only else "Optimization objective history"
             self.performance_plot.redraw()
         if hasattr(self, "monitor_plots"):
-            self.monitor_plots.tab(0, text="Run history" if run_only else "Candidates")
+            self.monitor_plots.tab(0, text="Candidates", state="hidden" if run_only else "normal")
         if hasattr(self, "run_only_note"):
             if run_only:
                 self.run_only_note.grid()

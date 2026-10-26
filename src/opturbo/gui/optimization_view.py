@@ -80,6 +80,7 @@ class OptimizationViewMixin:
         self.run_results_notebook.add(run_plot_page, text="Cp / Ct vs TSR")
         self.run_plot_page = run_plot_page
         self.results_tree = ttk.Treeview(results_table, columns=columns, show="headings", height=16)
+        self.results_tree.bind("<Configure>", self._resize_run_results_columns, add="+")
         self.run_only_columns = ("evaluation", "tsr", "cp", "ct", "status")
         headings = {"cp_normalized": "Cp normalized", "ct_normalized": "Ct normalized"}
         headings.update({"evaluation": "Evaluation", "tsr": "TSR", "cp": "Cp", "ct": "Ct"})
@@ -102,6 +103,24 @@ class OptimizationViewMixin:
         self.best_var = tk.StringVar(
             value=f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         ttk.Label(results, textvariable=self.best_var, style="Title.TLabel").pack(anchor="w", pady=10)
+
+    def _resize_run_results_columns(self, event: tk.Event) -> None:
+        """Fit visible run-result columns to the table's current width."""
+        tree = getattr(self, "results_tree", None)
+        if tree is None or event.width <= 1:
+            return
+        columns = (self.run_only_columns if self._run_only_selected()
+                   else tuple(tree.cget("columns")))
+        if not columns:
+            return
+        available = max(1, event.width - 24)
+        weights = {"evaluation": 1.15, "generation": 1.0, "candidate": 1.0,
+                   "tsr": 0.85, "cp": 0.85, "ct": 0.85,
+                   "cp_normalized": 1.3, "ct_normalized": 1.3, "status": 1.5}
+        total = sum(weights.get(column, 1.0) for column in columns)
+        for column in columns:
+            width = max(48, round(available * weights.get(column, 1.0) / total))
+            tree.column(column, width=width, minwidth=48, stretch=True)
 
     def _resize_optimization_help(self, event: tk.Event | None = None) -> None:
         """Wrap optimization help to its actual column width and preserve a right margin."""

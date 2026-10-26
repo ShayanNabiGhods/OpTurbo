@@ -49,9 +49,11 @@ workflow pipeline; UI modules should not call FreeCAD, SpaceClaim, Meshing, or
 Fluent directly. `simple_bem_view.py` reads the current flow and rotor fields,
 then calls `opturbo.simple_bem` with the selected workflow's blade and polar
 tables. This panel runs locally and does not start the engineering workflow.
-`aerodynamic_data_view.py` calls `opturbo.pipeline.aerodynamic_tables` to load,
-validate, and save the selected workflow's CSV resources. It stages edits and
-writes them only after the blade and polar tables pass cross-file validation;
+`aerodynamic_data_view.py` presents the workflow's blade and polar CSV files in
+a dataset sidebar beside the selected table, format notes, and edit/import
+actions. It calls `opturbo.pipeline.aerodynamic_tables` to load, validate, and
+save the selected workflow's resources. It stages edits and writes them only
+after the blade and polar tables pass cross-file validation;
 the exact formats are in `docs/manual.md` under Aerodynamic Data. The single Help
 button in the top header opens the user manual;
 the Help menu retains the theory guide and About dialog.
@@ -63,4 +65,6 @@ project folder. The Design tab is hidden and the Optimization tab becomes a
 simple Run panel, with no GA controls; mesh study remains available. Duct
 design, duct mesh sizing, and source-initialization controls are hidden for
 this workflow, which always uses conservative source initialization. Automatic
-mesh studies use evenly spaced values only.
+mesh studies use evenly spaced values only. The Monitor hides the candidate-
+history plot for this workflow. Its run table fits visible columns to the
+available width, and its Cp/Ct chart follows the active application theme.

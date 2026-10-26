@@ -54,37 +54,59 @@ class AerodynamicDataViewMixin:
         self.cfd_tables_tab = tab
         self.notebook.add(tab, text="  Aerodynamic Data  ")
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(2, weight=1)
+        tab.rowconfigure(1, weight=1)
         ttk.Label(
             tab,
-            text=("Edit the blade sections and airfoil polar tables used by both CFD/BEM workflows. "
-                  "Changes are staged until Save tables is pressed. Each workflow keeps its own copy."),
-            wraplength=1080,
+            text=("Manage the blade geometry and airfoil performance data used by this workflow. "
+                  "Select a dataset, edit cells directly, or import a headerless numeric CSV."),
+            wraplength=1100,
             justify="left",
-        ).grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 12))
 
-        toolbar = ttk.Frame(tab)
-        toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(toolbar, text="Table").pack(side="left", padx=(0, 6))
+        workspace = ttk.Frame(tab)
+        workspace.grid(row=1, column=0, sticky="nsew")
+        workspace.columnconfigure(0, weight=0, minsize=210)
+        workspace.columnconfigure(1, weight=1)
+        workspace.rowconfigure(0, weight=1)
+        datasets = ttk.LabelFrame(workspace, text="Datasets", padding=8)
+        datasets.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        datasets.rowconfigure(0, weight=1)
+        datasets.columnconfigure(0, weight=1)
         self.cfd_table_name_var = tk.StringVar(value=CFD_TABLE_FILES[0])
-        self.cfd_table_selector = ttk.Combobox(
-            toolbar, textvariable=self.cfd_table_name_var, values=CFD_TABLE_FILES,
-            state="readonly", width=22,
-        )
-        self.cfd_table_selector.pack(side="left", padx=(0, 12))
-        self.cfd_table_selector.bind("<<ComboboxSelected>>", self._on_cfd_table_selected)
-        ttk.Button(toolbar, text="Import selected CSV…", command=self._import_cfd_table).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Save tables", command=self._save_cfd_tables).pack(side="left", padx=4)
-        ttk.Button(toolbar, text="Discard edits", command=self._discard_cfd_table_edits).pack(side="left", padx=4)
+        self.cfd_table_list = ttk.Treeview(
+            datasets, columns=("dataset", "rows"), show="headings", selectmode="browse", height=8)
+        self.cfd_table_list.heading("dataset", text="CSV file")
+        self.cfd_table_list.heading("rows", text="Rows")
+        self.cfd_table_list.column("dataset", width=155, minwidth=125, stretch=True)
+        self.cfd_table_list.column("rows", width=48, minwidth=40, stretch=False, anchor="center")
+        self.cfd_table_list.grid(row=0, column=0, sticky="nsew")
+        self.cfd_table_list.bind("<<TreeviewSelect>>", self._on_cfd_table_list_selected)
+        for filename in CFD_TABLE_FILES:
+            self.cfd_table_list.insert("", "end", iid=filename, values=(filename, "—"))
 
+        editor = ttk.Frame(workspace)
+        editor.grid(row=0, column=1, sticky="nsew")
+        editor.columnconfigure(0, weight=1)
+        actions = ttk.Frame(editor)
+        actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(actions, text="Import CSV…", command=self._import_cfd_table).pack(side="left")
+        ttk.Button(actions, text="Save tables", command=self._save_cfd_tables,
+                   style="Accent.TButton").pack(side="right", padx=(8, 0))
+        ttk.Button(actions, text="Discard edits", command=self._discard_cfd_table_edits).pack(side="right")
+        self.cfd_table_title_var = tk.StringVar(value=CFD_TABLE_FILES[0])
+        ttk.Label(editor, textvariable=self.cfd_table_title_var, style="Title.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(0, 3))
         self.cfd_table_format_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.cfd_table_format_var, style="Subtitle.TLabel",
-                  wraplength=1080, justify="left").grid(row=2, column=0, sticky="new", pady=(0, 8))
-        grid_frame = ttk.Frame(tab)
+        # Keep the format note adjacent to the editor while the dataset list stays visible.
+        self.cfd_table_format_label = ttk.Label(editor, textvariable=self.cfd_table_format_var,
+                                                style="Subtitle.TLabel", wraplength=900, justify="left")
+        self.cfd_table_format_label.grid(row=2, column=0, sticky="new", pady=(0, 8))
+        editor.bind("<Configure>", self._resize_cfd_table_format, add="+")
+        grid_frame = ttk.Frame(editor)
         grid_frame.grid(row=3, column=0, sticky="nsew")
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.rowconfigure(0, weight=1)
-        tab.rowconfigure(3, weight=1)
+        editor.rowconfigure(3, weight=1)
         self.cfd_table_tree = ttk.Treeview(grid_frame, show="headings", selectmode="browse")
         yscroll = ttk.Scrollbar(grid_frame, orient="vertical", command=self.cfd_table_tree.yview)
         xscroll = ttk.Scrollbar(grid_frame, orient="horizontal", command=self.cfd_table_tree.xview)
@@ -95,7 +117,7 @@ class AerodynamicDataViewMixin:
         self.cfd_table_tree.bind("<Double-1>", self._begin_cfd_table_cell_edit)
         self.cfd_table_status_var = tk.StringVar(value="Loading workflow tables…")
         ttk.Label(tab, textvariable=self.cfd_table_status_var, style="Subtitle.TLabel").grid(
-            row=4, column=0, sticky="w", pady=(8, 0))
+            row=2, column=0, sticky="w", pady=(8, 0))
         self._cfd_tables_workflow_id: str | None = None
         self.cfd_table_data: dict[str, list[list[float]]] = {}
         self.cfd_table_dirty: set[str] = set()
@@ -104,6 +126,22 @@ class AerodynamicDataViewMixin:
         self._cfd_table_editor_commit: Callable[[], bool] | None = None
         self.notebook.bind("<<NotebookTabChanged>>", self._on_cfd_tables_tab_selected, add="+")
         self._load_cfd_tables_for_workflow()
+
+    def _on_cfd_table_list_selected(self, _event: tk.Event | None = None) -> None:
+        """Display the dataset selected in the sidebar after committing any edit."""
+        selection = self.cfd_table_list.selection()
+        if not selection:
+            return
+        selected = selection[0]
+        if selected == self.cfd_table_name_var.get():
+            return
+        self.cfd_table_name_var.set(selected)
+        self._on_cfd_table_selected()
+
+    def _resize_cfd_table_format(self, event: tk.Event) -> None:
+        """Wrap format guidance to the width available beside the dataset list."""
+        if hasattr(self, "cfd_table_format_label"):
+            self.cfd_table_format_label.configure(wraplength=max(280, event.width - 12))
 
     def _cfd_tables_directory(self, workflow_id: str | None = None) -> Path:
         """Return the active workflow's independent aerodynamic table folder."""
@@ -136,6 +174,13 @@ class AerodynamicDataViewMixin:
         rows = self.cfd_table_data[filename]
         expected, description = _TABLE_FORMATS[filename]
         self.cfd_table_format_var.set(f"Format: {description}")
+        self.cfd_table_title_var.set(filename)
+        if hasattr(self, "cfd_table_list"):
+            for table_name, table_rows in self.cfd_table_data.items():
+                marker = " *" if table_name in self.cfd_table_dirty else ""
+                self.cfd_table_list.item(table_name, values=(table_name + marker, len(table_rows)))
+            self.cfd_table_list.selection_set(filename)
+            self.cfd_table_list.see(filename)
         column_count = max((len(row) for row in rows), default=1)
         columns = tuple(f"column_{index}" for index in range(column_count))
         self.cfd_table_tree.configure(columns=columns)
@@ -214,6 +259,7 @@ class AerodynamicDataViewMixin:
         if self._cfd_table_editor_commit and not self._cfd_table_editor_commit():
             if self._cfd_table_editor_filename:
                 self.cfd_table_name_var.set(self._cfd_table_editor_filename)
+                self.cfd_table_list.selection_set(self._cfd_table_editor_filename)
             return
         self._render_cfd_table()
 

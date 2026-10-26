@@ -144,7 +144,7 @@ The **Results table** reports angular speed, power, Cp, Ct, and the number of ra
 
 ## Aerodynamic Data tab: edit and import CSV tables {#aerodynamic-data}
 
-The **Aerodynamic Data** tab edits the blade geometry and airfoil polar inputs used by both ducted and open-turbine CFD/BEM runs and by **Simple BEM**. Select a CSV from the **Table** menu. Double-click a displayed cell to edit its numeric value. Use **Import selected CSV…** to load a replacement file into the selected table; its layout is checked before it is staged. Use **Save tables** to validate the complete related set and write the staged files. **Discard edits** reloads the saved files. Leaving the tab does not save changes automatically. When changing workflows with staged edits, choose whether to save them to the current workflow before switching.
+The **Aerodynamic Data** tab edits the blade geometry and airfoil polar inputs used by both ducted and open-turbine CFD/BEM runs and by **Simple BEM**. Select a CSV in the **Datasets** list; its row count and filename appear beside the table. The format note describes the selected file. Double-click a displayed cell to edit its numeric value. Use **Import CSV…** to load a replacement file into the selected table; its layout is checked before it is staged. Unsaved datasets are marked with an asterisk. Use **Save tables** to validate the complete related set and write the staged files. **Discard edits** reloads the saved files. Leaving the tab does not save changes automatically. When changing workflows with staged edits, choose whether to save them to the current workflow before switching.
 
 Each workflow has a separate copy under `resources/workflows/<workflow-id>/cfd_tables/`. A save changes only the selected workflow's tables; past candidate results remain as they were. New evaluations and Simple BEM runs use the currently selected workflow's saved tables.
 
@@ -212,7 +212,7 @@ The progress bar counts candidate evaluations. The result table shows evaluation
 
 ## Monitor tab {#monitor}
 
-The log shows pipeline stages and Fluent output. **Candidates** plots performance histories. **BEM** shows the latest axial/tangential induction and loss-factor distributions by radial station. **Live residuals** plots residual history on a logarithmic scale as Fluent reports it. **Outer Cp / Ct** shows the coupled performance values across outer iterations. A flat trace alone does not establish mesh or model independence; review logs and candidate artifacts as well.
+The log shows pipeline stages and Fluent output. In the ducted workflow, **Candidates** plots performance histories. The open-turbine workflow hides this history view because its results are shown in the Run panel. **BEM** shows the latest axial/tangential induction and loss-factor distributions by radial station. **Live residuals** plots residual history on a logarithmic scale as Fluent reports it. **Outer Cp / Ct** shows the coupled performance values across outer iterations. A flat trace alone does not establish mesh or model independence; review logs and candidate artifacts as well.
 
 ## Accessibility tab {#accessibility}
 

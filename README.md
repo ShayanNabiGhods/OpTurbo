@@ -76,7 +76,8 @@ folder outside the source-code folder, for example
   appear side-by-side in a table on the left and a Cp/Ct plot on the right.
 - **Aerodynamic Data** — edit or import the active workflow's blade-section
   geometry and airfoil lift/drag CSV tables. The panel checks numeric values,
-  section ordering, polar axes, and matrix dimensions before saving. See the
+  section ordering, polar axes, and matrix dimensions before saving. A dataset
+  list and row counts sit beside the selected table and its format notes. See the
   [manual's CSV format guide](docs/manual.md#aerodynamic-data) for exact layouts.
 - **2D axisymmetric open turbine** → generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
@@ -92,8 +93,9 @@ folder outside the source-code folder, for example
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation
   are allowed to finish.
-- **Monitor** — review candidate results, BEM distributions, live residuals,
-  and outer-iteration `Cp`/`Ct` plots in separate views.
+- **Monitor** — review candidate histories, BEM distributions, live residuals,
+  and outer-iteration `Cp`/`Ct` plots in separate views. Candidate history is
+  hidden for open-turbine runs, whose results appear in the Run panel.
 
 ## Candidate pipeline
 
