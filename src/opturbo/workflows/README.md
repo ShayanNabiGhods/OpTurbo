@@ -28,8 +28,9 @@ future workflow-only settings can be stored under
 `ProjectConfig.workflow_settings[workflow_id]`. Bundle new workflow assets in
 `resources/workflows/<workflow_id>/` and have that workflow select the folder.
 
-`axisymmetric_2d_open_turbine/` prepares open-turbine geometry and mesh. Its
-local README lists every file in the package. It creates a domain, resolution
-region, actuator disk, hub, and compound STEP assembly without a duct, pauses
-for the user's SpaceClaim script, and then runs duct-free meshing. Fluent case
-creation and solving remain outside this workflow.
+`axisymmetric_2d_open_turbine/` runs open-turbine geometry, CAD, meshing, and
+Fluent/BEM performance evaluation. It uses its own SpaceClaim script and
+baseline case, shares the existing actuator-disk UDF and BEM tables, and stores
+all four stages under each selected-project candidate without writing run
+folders under `C:\OpTurbo\Temp Files`. Its Run panel has no genetic optimization
+controls; mesh study remains available.

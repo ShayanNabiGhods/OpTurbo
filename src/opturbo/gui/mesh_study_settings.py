@@ -12,7 +12,10 @@ from .constants import LABELS, MESH_STUDY_SIZE_FIELDS
 
 class MeshStudySettingsMixin:
     def _get_mesh_study_enabled(self) -> dict[str, bool]:
-        return {name: variable.get() for name, variable in self.mesh_study_enabled.items()}
+        enabled = {name: variable.get() for name, variable in self.mesh_study_enabled.items()}
+        if getattr(self, "_run_only_selected", lambda: False)():
+            enabled["duct_size_cm"] = False
+        return enabled
 
     def _refresh_mesh_study_controls(self) -> None:
         """Disable and visually gray mesh controls excluded from the study."""
@@ -24,6 +27,43 @@ class MeshStudySettingsMixin:
                 foreground=self.palette["text"] if is_enabled else self.palette["muted"])
             for bound_control in self.mesh_study_bound_controls.get(name, ()):
                 bound_control.configure(state="normal" if is_enabled else "disabled")
+
+    def _apply_mesh_study_workflow_mode(self, run_only: bool) -> None:
+        """Hide duct sizing and normalized duct metrics for the open workflow."""
+        name = "duct_size_cm"
+        widgets = [self.mesh_study_checks.get(name), self.mesh_study_labels.get(name),
+                   self.mesh_study_controls.get(name),
+                   *self.mesh_study_bound_controls.get(name, ())]
+        for widget in widgets:
+            if widget is None:
+                continue
+            if run_only:
+                widget.grid_remove()
+            else:
+                widget.grid()
+        if run_only:
+            if not hasattr(self, "_saved_duct_mesh_enabled"):
+                self._saved_duct_mesh_enabled = self.mesh_study_enabled[name].get()
+            self.mesh_study_enabled[name].set(False)
+        elif hasattr(self, "_saved_duct_mesh_enabled"):
+            self.mesh_study_enabled[name].set(self._saved_duct_mesh_enabled)
+            del self._saved_duct_mesh_enabled
+        self._refresh_mesh_study_controls()
+        if hasattr(self, "mesh_study_description"):
+            description = (
+                "Compare mesh settings for one open-turbine design. Each candidate runs "
+                "mesh generation and Fluent/BEM evaluation; results are saved with the project."
+                if run_only else
+                "Compare mesh settings for one design. Geometry and CFD/BEM settings come from Workflow Settings; "
+                "only the mesh settings below vary. Candidate time is mesh plus Fluent/BEM time."
+            )
+            self.mesh_study_description.configure(text=description)
+        if hasattr(self, "mesh_study_tree"):
+            columns = self.mesh_study_tree["columns"]
+            self.mesh_study_tree.configure(
+                displaycolumns=("id", "status", "cells", "mesh_s", "fluent_s", "total_s", "outer", "cp", "ct")
+                if run_only else columns
+            )
 
     def _resize_mesh_study_columns(self, event: object) -> None:
         """Distribute mesh-study table columns across its available width."""
@@ -135,6 +175,8 @@ class MeshStudySettingsMixin:
         if not row or not row.get("mesh_settings"):
             return
         for name, value in row["mesh_settings"].items():
+            if name == "duct_size_cm" and self._run_only_selected():
+                continue
             if ("mesh", name) in self.field_vars:
                 if name == "method" and value == "Default":
                     value = "Default (ANSYS automatic)"

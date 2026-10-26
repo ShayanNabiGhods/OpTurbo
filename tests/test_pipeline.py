@@ -74,6 +74,20 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn("/define/models/viscous", later_text)
         self.assertNotIn("/solve/set/discretization-scheme", later_text)
 
+    def test_first_journal_can_open_a_workflow_specific_baseline_case(self):
+        from opturbo.cfd.fluent import write_journal
+        from types import SimpleNamespace
+        import tempfile
+
+        blade = SimpleNamespace(radius=[0.1], dr=[0.1])
+        with tempfile.TemporaryDirectory() as folder:
+            journal = Path(folder) / "run.jou"
+            write_journal(journal, blade, True, 1,
+                          case_name="open_turbine_assembly.cas.h5")
+            text = journal.read_text(encoding="utf-8")
+        self.assertIn('/file/read-case "open_turbine_assembly.cas.h5"', text)
+        self.assertIn('/file/write-case "generated_coupling_case.cas.h5"', text)
+
     def test_first_journal_uses_model_specific_equations(self):
         from opturbo.cfd.fluent import first_iteration_setup
 

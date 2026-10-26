@@ -5,11 +5,15 @@ import math
 
 from ..models import VariableSpec
 from ..objectives import OBJECTIVES
+from ..paths import APPLICATION_ROOT as APP_ROOT
 from ..storage import atomic_json
+from ..workflows import get_workflow
 
 
 class MonitorResultsMixin:
     def _record_result(self, event: dict) -> None:
+        run_only = bool(event.get("run_only", getattr(
+            get_workflow(self.config_model.workflow_id, APP_ROOT), "run_only", False)))
         with self.history_lock:
             optimization_id = event.get("optimization_id")
             already_saved = optimization_id and any(
@@ -21,7 +25,10 @@ class MonitorResultsMixin:
             if not already_saved:
                 self.history.append(event)
             if self.store:
-                self.store.save_history(self.history)
+                if run_only:
+                    atomic_json(self.store.root / "run_history.json", {"evaluations": self.history})
+                else:
+                    self.store.save_history(self.history)
         cp = float(event.get("cp", float("nan")))
         ct_value = event.get("ct")
         ct = float(ct_value) if ct_value is not None else float("nan")
@@ -38,7 +45,9 @@ class MonitorResultsMixin:
         self.progress.configure(value=progress_value)
         fitness = float(event.get("fitness", cp))
         objective = str(event.get("objective", "cp"))
-        if (status == "completed" and objective == self.config_model.ga.objective
+        if run_only:
+            self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
+        elif (status == "completed" and objective == self.config_model.ga.objective
                 and fitness > self.best_fitness):
             self.best_fitness = fitness
             self.best_var.set(self._best_result_text(event))
@@ -73,6 +82,7 @@ class MonitorResultsMixin:
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
         self.best_fitness = float("-inf")
+        run_only = bool(getattr(get_workflow(self.config_model.workflow_id, APP_ROOT), "run_only", False))
         for event in self.history:
             cp = float(event.get("cp", float("nan")))
             ct_value = event.get("ct")
@@ -84,6 +94,9 @@ class MonitorResultsMixin:
                                      self._format_table_value(event.get("cp_normalized")),
                                      self._format_table_value(event.get("ct_normalized")),
                                      event.get("status", "completed")))
+            if run_only:
+                self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
+                continue
             fitness = float(event.get("fitness", cp))
             objective = str(event.get("objective", "cp"))
             if (event.get("status", "completed") == "completed"

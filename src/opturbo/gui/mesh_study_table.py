@@ -58,6 +58,8 @@ class MeshStudyTableMixin:
             mesh = row.get("mesh_settings", {})
             lines.append("Mesh settings:")
             for item in fields(MeshSettings):
+                if item.name == "duct_size_cm" and self._run_only_selected():
+                    continue
                 value = mesh.get(item.name, "—")
                 lines.append(f"  {LABELS.get(item.name, item.name)}: {value}")
             lines.append(f"Candidate folder: {row.get('candidate_dir', '—')}")

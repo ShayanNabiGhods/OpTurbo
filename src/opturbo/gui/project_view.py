@@ -14,6 +14,13 @@ from .widgets import ScrollableFrame
 
 
 class ProjectViewMixin:
+    @staticmethod
+    def _history_filename(workflow_id: str) -> str:
+        """Select the history store for a run-only workflow or an optimizer."""
+        return ("run_history.json" if getattr(
+            get_workflow(workflow_id, APP_ROOT), "run_only", False)
+                else "optimization_history.json")
+
     def _build_project_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=16)
         self.notebook.add(tab, text="  Project  ")
@@ -83,6 +90,8 @@ class ProjectViewMixin:
         try:
             model = self._read_model_from_fields()
             previous_objective = self.config_model.ga.objective
+            previous_workflow_id = self.config_model.workflow_id
+            previous_store_root = self.store.root if self.store is not None else None
             if not model.save_dir:
                 self._choose_project_folder()
                 return bool(self.save_dir_var.get())
@@ -92,6 +101,12 @@ class ProjectViewMixin:
                 self.best_var.set(self._best_result_text())
             self.store = ProjectStore(Path(model.save_dir))
             self.store.initialize(model)
+            if previous_store_root != self.store.root or previous_workflow_id != model.workflow_id:
+                history_file = self.store.root / self._history_filename(model.workflow_id)
+                self.history = (json.loads(history_file.read_text(encoding="utf-8")).get("evaluations", [])
+                                if history_file.exists() else [])
+                if hasattr(self, "results_tree"):
+                    self._refresh_results()
             self._update_resume_button()
             self.status_var.set(f"Saved — {model.save_dir}")
             return True
@@ -109,7 +124,7 @@ class ProjectViewMixin:
         try:
             self.config_model = ProjectStore.load(Path(path))
             self.store = ProjectStore(Path(self.config_model.save_dir))
-            history_file = Path(self.config_model.save_dir) / "optimization_history.json"
+            history_file = Path(self.config_model.save_dir) / self._history_filename(self.config_model.workflow_id)
             self.history = json.loads(history_file.read_text(encoding="utf-8")).get("evaluations", []) if history_file.exists() else []
             self._load_model_into_fields()
             self._refresh_results()

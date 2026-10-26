@@ -16,12 +16,13 @@ class MeshStudyViewMixin:
         tab = ttk.Frame(self.notebook, padding=10)
         self.mesh_study_tab = tab
         self.notebook.add(tab, text="  Mesh Study  ")
-        ttk.Label(
+        self.mesh_study_description = ttk.Label(
             tab,
             text=("Compare mesh settings for one design. Geometry and CFD/BEM settings come from Workflow Settings; "
                   "only the mesh settings below vary. Candidate time is mesh plus Fluent/BEM time."),
             style="Subtitle.TLabel", wraplength=1120, justify="left",
-        ).pack(anchor="w", pady=(0, 8))
+        )
+        self.mesh_study_description.pack(anchor="w", pady=(0, 8))
         pane = ttk.Panedwindow(tab, orient="horizontal")
         pane.pack(fill="both", expand=True)
         controls_scroll = ScrollableFrame(pane)
@@ -57,9 +58,10 @@ class MeshStudyViewMixin:
             self.mesh_study_vars[name] = tk.StringVar()
             self.mesh_study_min_vars[name] = tk.StringVar(value=self._format_user_number(defaults[name][0]))
             self.mesh_study_max_vars[name] = tk.StringVar(value=self._format_user_number(defaults[name][1]))
-            ttk.Checkbutton(controls, variable=self.mesh_study_enabled[name],
-                            command=self._refresh_mesh_study_controls).grid(
-                row=row, column=0, sticky="w", padx=4, pady=3)
+            check = ttk.Checkbutton(controls, variable=self.mesh_study_enabled[name],
+                                    command=self._refresh_mesh_study_controls)
+            check.grid(row=row, column=0, sticky="w", padx=4, pady=3)
+            self.mesh_study_checks[name] = check
             label = ttk.Label(controls, text=LABELS.get(name, name.replace("_", " ").title()))
             label.grid(row=row, column=1, sticky="w", padx=4, pady=3)
             self.mesh_study_labels[name] = label

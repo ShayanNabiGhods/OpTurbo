@@ -1,10 +1,10 @@
 # OpTurbo
 
-OpTurbo is a Windows desktop application for designing and optimizing ducted
-wind turbines. It connects a Tkinter interface and genetic algorithm to a
-four-stage engineering workflow: FreeCAD geometry, SpaceClaim, ANSYS Meshing,
-and Fluent/BEM. The optimization objective is the final power coefficient
-(`Cp`); thrust coefficient (`Ct`) and BEM distributions are also recorded.
+OpTurbo is a Windows desktop application for designing, evaluating, and
+optimizing ducted and open wind turbines. It connects a Tkinter interface to
+four-stage engineering workflows: FreeCAD geometry, SpaceClaim, ANSYS Meshing,
+and Fluent/BEM. Ducted designs can use the genetic algorithm; the open-turbine
+workflow runs one performance evaluation at a time and keeps mesh study.
 
 ## Start the application
 
@@ -76,9 +76,10 @@ folder outside the source-code folder, for example
   appear in a table and in a Cp/Ct plot against TSR.
 - **2D axisymmetric open turbine** — generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
-  creating a duct. Run the supplied SpaceClaim script manually, then generate
-  the mesh with app mesh settings. Fluent case creation and solving are not
-  included yet.
+  creating a duct. Run FreeCAD, the packaged SpaceClaim script, ANSYS Meshing,
+  and Fluent/BEM to evaluate one design. Results stay in the selected project's
+  candidate folder. The workflow has no genetic optimization controls; mesh
+  study remains available.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation
@@ -107,12 +108,12 @@ The ducted workflow passes each candidate through these stages:
 Failed candidates are recorded with diagnostic details in their candidate
 folder and assigned a low fitness so the remaining optimization can continue.
 
-The **2D axisymmetric open turbine** workflow runs FreeCAD, pauses for the
-user's SpaceClaim script, then runs ANSYS Meshing. Its duct-free meshing script
-uses domain, resolution, and hub sizing and omits duct sizing and duct-wall
-inflation. Mesh artifacts are retained under the candidate's `03_mesh/` folder
-and copied to a unique `C:\OpTurbo\Temp Files\open_turbine_mesh_run_NNN\`
-handoff folder. Fluent case creation and solving are left for the user.
+The **2D axisymmetric open turbine** workflow runs all four stages and records
+geometry, SpaceClaim, mesh, Fluent/BEM results, and logs under the selected
+project's standard candidate layout. Its mesh script uses domain, resolution,
+and hub sizing and omits duct sizing and duct-wall inflation. It uses the
+workflow's open-turbine Fluent baseline case and shares the ducted workflow's
+UDF and BEM tables. It creates no run directories under `C:\OpTurbo\Temp Files`.
 
 ### Overlap preparation
 
@@ -151,6 +152,7 @@ chosen-project-folder/
 ├── opturbo_project.json
 ├── optimization_history.json
 ├── optimization_state.json
+├── run_history.json              # Open-turbine performance runs
 ├── best/
 ├── logs/
 ├── exports/
@@ -167,7 +169,8 @@ chosen-project-folder/
 
 Candidate directories preserve pipeline inputs, outputs, and logs for review.
 Repeated evaluations use a new run directory rather than replacing an existing
-candidate's artifacts.
+candidate's artifacts. Open-turbine runs are listed in `run_history.json` and
+do not create genetic-optimization state.
 
 ## Source layout
 
@@ -203,7 +206,7 @@ src/opturbo/
 resources/
 ├── spaceclaim/                    # Current workflow's recorded SpaceClaim script
 ├── meshing/                       # Current workflow's ANSYS scripts
-├── workflows/axisymmetric_2d_open_turbine/ # Open-turbine duct-free mesh script
+├── workflows/axisymmetric_2d_open_turbine/ # Open-turbine CAD, mesh and Fluent case assets
 ├── fluent/                        # Baseline case and UDF resources
 └── cfd_tables/                    # Blade, airfoil, and operating-point data
 ```

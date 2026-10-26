@@ -15,15 +15,28 @@ class FluentBEMStage(PipelineStage):
     """Prepare candidate inputs and run the Fluent/BEM worker."""
 
     def run(self, config: ProjectConfig, mesh: Path, output: Path,
-            previous_candidate_sources: Path | None = None) -> dict:
+            previous_candidate_sources: Path | None = None,
+            baseline_case: Path | None = None,
+            case_name: str | None = None) -> dict:
         self.runner.emit("[4/4] Running persistent Fluent/BEM coupling")
         tables = output / "resources"
         fluent_workdir = output / "fluent"
-        shutil.copytree(self.runner.resources / "cfd_tables", tables, dirs_exist_ok=True)
-        shutil.copytree(self.runner.resources / "fluent", fluent_workdir, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("iteration_history", "*.log", "latest_result.json"))
+        shared_resources = self.runner.root / "resources"
+        tables_source = self.runner.resources / "cfd_tables" if baseline_case is None else shared_resources / "cfd_tables"
+        shutil.copytree(tables_source, tables, dirs_exist_ok=True)
+        if baseline_case is None:
+            shutil.copytree(self.runner.resources / "fluent", fluent_workdir, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("iteration_history", "*.log", "latest_result.json"))
+        else:
+            fluent_workdir.mkdir(parents=True, exist_ok=True)
+            case_name = case_name or baseline_case.name
+            shutil.copy2(baseline_case, fluent_workdir / case_name)
+            shutil.copytree(shared_resources / "fluent" / "libudf", fluent_workdir / "libudf",
+                            dirs_exist_ok=True)
+            shutil.copy2(shared_resources / "fluent" / "ad_sources.c", fluent_workdir / "ad_sources.c")
         cfd_settings = {
             "fluent": require_executable(config.tools.fluent, "Fluent"),
+            **({"case_name": case_name} if case_name else {}),
             "max_outer": config.cfd.max_outer_iterations,
             "tolerance": config.cfd.tolerance,
             "relax": config.cfd.relaxation,

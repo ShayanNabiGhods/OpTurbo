@@ -18,6 +18,7 @@ class MonitorViewMixin:
         tab.rowconfigure(1, weight=1, uniform="monitor_rows")
         log_frame = ttk.LabelFrame(tab, text="Fluent and pipeline log", padding=5)
         plots = ttk.Notebook(tab)
+        self.monitor_plots = plots
         plots.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(5, 0))
         performance = ttk.Frame(plots)
         bem = ttk.Frame(plots)
@@ -36,7 +37,7 @@ class MonitorViewMixin:
         xscroll.grid(row=1, column=0, sticky="ew")
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
-        self.performance_plot = LinePlot(performance, "Optimization objective history", "Evaluation (-)", "Cp / Ct (-)",
+        self.performance_plot = LinePlot(performance, "Performance history", "Evaluation (-)", "Cp / Ct (-)",
                                          markers=True, scatter=True, height=260)
         self.performance_plot.pack(fill="both", expand=True)
         self.bem_plot = LinePlot(bem, "Latest radial BEM solution", "Radial station (-)", "Value (-)",

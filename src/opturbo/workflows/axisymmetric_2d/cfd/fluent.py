@@ -69,14 +69,15 @@ def first_iteration_setup(settings: dict) -> list[str]:
 
 
 def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.msh",
-                  fluent_iterations=200, fluent_settings=None):
+                  fluent_iterations=200, fluent_settings=None,
+                  case_name="new_fluent_case_file.cas.h5"):
     """Write a journal; only iteration one creates radial line surfaces."""
     path = Path(path)
     # Fluent surface IDs can contain gaps or change after a mesh replacement.
     # The line-surface names are stable and are accepted by the TUI anywhere
     # that a surface list is requested.
     facets = " ".join(f"line-{index:02d}" for index in range(1, len(blade.radius) + 1))
-    case = "new_fluent_case_file.cas.h5" if first else "generated_coupling_case.cas.h5"
+    case = case_name if first else "generated_coupling_case.cas.h5"
     lines = [f'/file/read-case "{case}"']
     if first:
         lines.append(f'/mesh/replace "{mesh_name}"')

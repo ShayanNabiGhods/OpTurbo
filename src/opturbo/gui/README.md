@@ -51,7 +51,9 @@ panel runs locally and does not start the workflow pipeline. The single Help
 button in the top header opens the user manual;
 the Help menu retains the theory guide and About dialog.
 
-The Project workflow selector also offers an open-turbine preparation mode.
-Its workflow runner generates the STEP assembly, waits for the user's manual
-SpaceClaim script, then creates an ANSYS mesh. Mesh settings remain available
-with duct sizing hidden; CFD, duct-design, and mesh-study controls are disabled.
+The Project workflow selector also offers an open-turbine run workflow. It
+executes the packaged SpaceClaim script, creates a duct-free ANSYS mesh, then
+runs the Fluent/BEM evaluation. Candidate artifacts stay in the selected
+project folder. The Optimization tab becomes a simple Run panel, with no GA
+controls; mesh study remains available. Duct design and duct mesh sizing are
+hidden for this workflow.

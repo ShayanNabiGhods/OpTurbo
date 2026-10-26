@@ -23,30 +23,40 @@ class OptimizationViewMixin:
         results = ttk.Frame(pane, padding=(12, 0))
         pane.add(settings_scroll, weight=1)
         pane.add(results, weight=2)
-        self._add_dataclass_form(settings, "ga", GaSettings, inline_help=False)
+        self.run_only_note = ttk.Label(
+            settings,
+            text=("Run the open-turbine workflow once to evaluate performance. Each run is "
+                  "saved as a separate candidate with geometry, mesh, Fluent/BEM results, and logs."),
+            style="Subtitle.TLabel", wraplength=340, justify="left",
+        )
+        self.run_only_note.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(4, 12))
+        self.ga_settings_frame = ttk.LabelFrame(settings, text="Genetic optimization settings", padding=4)
+        self.ga_settings_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self._add_dataclass_form(self.ga_settings_frame, "ga", GaSettings, inline_help=False)
         actions = ttk.Frame(settings)
-        actions.grid(row=50, column=0, columnspan=3, sticky="ew", pady=16)
+        actions.grid(row=2, column=0, columnspan=3, sticky="ew", pady=16)
         self.single_button = ttk.Button(actions, text="Evaluate current design", command=self._run_single)
         self.single_button.pack(fill="x", pady=3)
-        self.mesh_button = ttk.Button(actions, text="Generate open-turbine mesh", command=self._run_open_turbine_mesh)
-        self.mesh_button.pack(fill="x", pady=3)
-        self.mesh_button.pack_forget()
-        self.start_button = ttk.Button(actions, text="Start GA optimization", style="Accent.TButton", command=self._run_ga)
+        self.ga_actions = ttk.Frame(actions)
+        self.ga_actions.pack(fill="x")
+        self.start_button = ttk.Button(self.ga_actions, text="Start GA optimization", style="Accent.TButton", command=self._run_ga)
         self.start_button.pack(fill="x", pady=3)
-        self.resume_button = ttk.Button(actions, text="Resume previous optimization", command=self._resume_ga,
+        self.resume_button = ttk.Button(self.ga_actions, text="Resume previous optimization", command=self._resume_ga,
                                         state="disabled")
         self.resume_button.pack(fill="x", pady=3)
         self.stop_button = ttk.Button(actions, text="Stop after current candidate", command=self._stop, state="disabled")
         self.stop_button.pack(fill="x", pady=3)
         self.terminate_button = ttk.Button(actions, text="Terminate whole process", command=self._terminate, state="disabled")
         self.terminate_button.pack(fill="x", pady=3)
-        ttk.Label(results, text="Optimization progress", style="Title.TLabel").pack(anchor="w")
+        self.results_title = ttk.Label(results, text="Optimization progress", style="Title.TLabel")
+        self.results_title.pack(anchor="w")
         self.progress = ttk.Progressbar(results, mode="determinate")
         self.progress.pack(fill="x", pady=8)
         columns = ("evaluation", "generation", "candidate", "cp", "ct", "cp_normalized", "ct_normalized", "status")
         results_table = ttk.Frame(results)
         results_table.pack(fill="both", expand=True)
         self.results_tree = ttk.Treeview(results_table, columns=columns, show="headings", height=16)
+        self.run_only_columns = ("evaluation", "cp", "ct", "status")
         headings = {"cp_normalized": "Cp normalized", "ct_normalized": "Ct normalized"}
         widths = (70, 70, 70, 85, 85, 110, 110, 150)
         for name, width in zip(columns, widths):

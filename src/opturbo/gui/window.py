@@ -75,6 +75,7 @@ class OpTurboWindow(
         self.mesh_study_rows: list[dict] = []
         self.mesh_study_vars: dict[str, tk.StringVar] = {}
         self.mesh_study_controls: dict[str, ttk.Widget] = {}
+        self.mesh_study_checks: dict[str, ttk.Widget] = {}
         self.mesh_study_bound_controls: dict[str, tuple[ttk.Widget, ttk.Widget]] = {}
         self.mesh_study_labels: dict[str, ttk.Label] = {}
         self.mesh_study_enabled: dict[str, tk.BooleanVar] = {}

@@ -6,7 +6,9 @@ from pathlib import Path
 import uuid
 
 from ..models import MeshSettings, ProjectConfig
+from ..paths import APPLICATION_ROOT as APP_ROOT
 from ..storage import atomic_json
+from ..workflows import get_workflow
 
 
 class MeshStudyWorkerMixin:
@@ -37,6 +39,7 @@ class MeshStudyWorkerMixin:
                 atomic_json(state_path, state)
             run_root = study_root / "runs" / run_id
             runner = self._runner()
+            run_only = bool(getattr(get_workflow(config.workflow_id, APP_ROOT), "run_only", False))
             if config.cfd.source_initialization == "previous_candidate":
                 for previous in reversed(records):
                     if previous.get("status") != "completed":
@@ -64,8 +67,12 @@ class MeshStudyWorkerMixin:
                     "run_id": run_id,
                     "candidate_number": index,
                     "status": "failed",
-                    "mesh_settings": asdict(mesh_settings),
-                    "enabled_mesh_variables": [name for name, is_enabled in enabled.items() if is_enabled],
+                    "mesh_settings": {
+                        name: value for name, value in asdict(mesh_settings).items()
+                        if name != "duct_size_cm" or not run_only
+                    },
+                    "enabled_mesh_variables": [name for name, is_enabled in enabled.items()
+                                                if is_enabled and (name != "duct_size_cm" or not run_only)],
                     "candidate_dir": str(candidate_folder),
                 }
                 self.events.put(("log", f"Mesh study candidate {next_id}: meshing and CFD/BEM evaluation starting"))

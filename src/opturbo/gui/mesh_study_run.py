@@ -153,12 +153,16 @@ class MeshStudyRunMixin:
     def _save_mesh_study_form(self, settings: MeshSettings, enabled: dict[str, bool]) -> None:
         """Persist the isolated mesh-study form values in the selected project."""
         if self.store is not None:
+            mesh_settings = asdict(settings)
+            if self._run_only_selected():
+                mesh_settings.pop("duct_size_cm", None)
             atomic_json(self.store.root / "mesh_study" / "settings.json", {
-                "mesh_settings": asdict(settings), "enabled_variables": enabled,
+                "mesh_settings": mesh_settings, "enabled_variables": enabled,
                 "sweep_strategy": self.mesh_study_strategy_var.get(),
                 "variable_bounds": {
                     name: {"minimum": self.mesh_study_min_vars[name].get(),
                            "maximum": self.mesh_study_max_vars[name].get()}
                     for name in MESH_STUDY_SIZE_FIELDS
+                    if name != "duct_size_cm" or not self._run_only_selected()
                 },
             })
