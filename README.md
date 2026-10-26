@@ -28,7 +28,7 @@ https://doi.org/10.5281/zenodo.23621604
 ### BibTeX
 
 ```bibtex
-@software{ghods_opturbo,
+@software{shayannabighods_opturbo,
   author  = { Nabi Ghods, Shayan},
   title   = {{OpTurbo}},
   doi     = {10.5281/zenodo.23621604},
