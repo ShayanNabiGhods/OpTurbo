@@ -14,6 +14,7 @@ class MeshStudyViewMixin:
     def _build_mesh_study_tab(self) -> None:
         """Build controls and candidate review table for a fixed-design mesh study."""
         tab = ttk.Frame(self.notebook, padding=10)
+        self.mesh_study_tab = tab
         self.notebook.add(tab, text="  Mesh Study  ")
         ttk.Label(
             tab,

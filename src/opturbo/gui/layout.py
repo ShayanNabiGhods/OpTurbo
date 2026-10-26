@@ -28,8 +28,10 @@ class LayoutMixin:
         header = ttk.Frame(self, padding=(14, 10))
         header.pack(fill="x")
         ttk.Label(header, text="OpTurbo", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="Geometry → SpaceClaim → Mesh → CFD/BEM → Genetic optimization",
-                  style="Subtitle.TLabel").pack(side="left", padx=16, pady=(6, 0))
+        self.workflow_summary_label = ttk.Label(
+            header, text="Geometry → SpaceClaim → Mesh → CFD/BEM → Genetic optimization",
+            style="Subtitle.TLabel")
+        self.workflow_summary_label.pack(side="left", padx=16, pady=(6, 0))
         self.status_var = tk.StringVar(value="Ready — choose a project folder to begin")
         ttk.Label(header, textvariable=self.status_var, style="Status.TLabel").pack(side="right")
         ttk.Button(header, text="Help", command=lambda: open_guide("manual.pdf")).pack(

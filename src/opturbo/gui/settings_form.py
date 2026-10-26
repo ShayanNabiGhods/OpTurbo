@@ -65,6 +65,9 @@ class SettingsFormMixin:
             label_widget = ttk.Label(parent, text=label)
             label_widget.grid(row=row, column=0, sticky="w", padx=5, pady=5)
             widget.grid(row=row, column=1, sticky="ew" if browse_paths else "w", padx=5, pady=5)
+            if not hasattr(self, "setting_controls"):
+                self.setting_controls = {}
+            self.setting_controls[key] = (label_widget, widget)
             if section == "mesh" and item.name in {"inflation_layers", "inflation_max_thickness_cm"}:
                 self.inflation_dependent_controls.extend((label_widget, widget))
             help_text = FIELD_HELP.get(item.name, f"Controls {label.lower()}.")
@@ -92,6 +95,8 @@ class SettingsFormMixin:
             parent.columnconfigure(column, weight=1, uniform=f"{section}_groups")
         for index, (title, names) in enumerate(groups):
             group = ttk.LabelFrame(columns[index % 2], text=title, padding=8)
+            if section == "geometry" and title == "Hub and duct placement":
+                self.hub_duct_settings_group = group
             group.pack(fill="x", padx=7, pady=6)
             self._add_dataclass_form(group, section, cls, exclude=exclude,
                                      include=set(names), inline_help=False)

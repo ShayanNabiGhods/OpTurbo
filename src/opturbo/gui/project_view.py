@@ -57,8 +57,9 @@ class ProjectViewMixin:
         self._add_dataclass_form(tools, "tools", ToolPaths, browse_paths=True)
         note = ("SpaceClaim handoff is intentionally fixed at C:\\OpTurbo\\Temp Files. "
                 "The application stages files there and copies all results into the selected workflow folder.")
-        ttk.Label(left, text=note, style="Subtitle.TLabel", wraplength=480,
-                  justify="left").pack(fill="x", pady=14)
+        self.workflow_note_label = ttk.Label(left, text=note, style="Subtitle.TLabel", wraplength=480,
+                                             justify="left")
+        self.workflow_note_label.pack(fill="x", pady=14)
 
     def _browse_tool(self, variable: tk.Variable) -> None:
         path = filedialog.askopenfilename(title="Select executable", filetypes=[("Executable", "*.exe"), ("All files", "*.*")])
@@ -162,7 +163,9 @@ class ProjectViewMixin:
         self._load_mesh_study_project_state()
         self._apply_accessibility()
         self._draw_design()
+        self._apply_workflow_mode()
 
     def _select_workflow(self, _event: object | None = None) -> None:
         """Store the selected workflow ID while showing its readable title."""
         self.workflow_id_var.set(self.workflow_label_to_id[self.workflow_label_var.get()])
+        self._apply_workflow_mode()

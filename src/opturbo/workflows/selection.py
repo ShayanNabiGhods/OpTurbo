@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from .axisymmetric_2d import Axisymmetric2DWorkflow
+from .axisymmetric_2d_open_turbine import Axisymmetric2DOpenTurbineWorkflow
 
 if TYPE_CHECKING:
     from .axisymmetric_2d.pipeline import PipelineRunner
@@ -25,6 +26,7 @@ class Workflow(Protocol):
 
 _WORKFLOW_TYPES: dict[str, Callable[[Path], Workflow]] = {
     Axisymmetric2DWorkflow.workflow_id: Axisymmetric2DWorkflow,
+    Axisymmetric2DOpenTurbineWorkflow.workflow_id: Axisymmetric2DOpenTurbineWorkflow,
 }
 
 

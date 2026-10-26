@@ -23,6 +23,8 @@ class WorkflowSettingsMixin:
             pages.add(page, text=title)
             if section == "mesh":
                 self.mesh_settings_page = page
+            elif section == "cfd":
+                self.cfd_settings_page = page
             # Initialize a persistent variable for every setting before placing
             # fields into separate groups (including currently hidden equations).
             self._add_dataclass_form(body, section, cls,

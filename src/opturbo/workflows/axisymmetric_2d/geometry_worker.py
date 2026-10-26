@@ -53,13 +53,13 @@ def main() -> None:
         print(f"Created: {path}")
 
 
-def run_with_freecad(configured_command: str) -> None:
+def run_with_freecad(configured_command: str, script_path: Path | None = None) -> None:
     """Relaunch this script and explicitly execute it inside FreeCAD."""
     command_path = Path(executable_path(configured_command))
     if not command_path.exists():
         raise SystemExit(f"FreeCAD was not found at: {configured_command}")
 
-    script_path = Path(__file__).resolve()
+    script_path = Path(script_path or __file__).resolve()
     script_text = str(script_path)
     if os.name != "nt" and script_text.startswith("/mnt/c/"):
         script_text = "C:/" + script_text[len("/mnt/c/"):]

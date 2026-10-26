@@ -11,6 +11,7 @@ from .widgets import ScrollableFrame
 class OptimizationViewMixin:
     def _build_optimization_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=12)
+        self.optimization_tab = tab
         self.notebook.add(tab, text="  Optimization  ")
         pane = ttk.Panedwindow(tab, orient="horizontal")
         pane.pack(fill="both", expand=True)

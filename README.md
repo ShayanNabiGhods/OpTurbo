@@ -74,6 +74,11 @@ folder outside the source-code folder, for example
   and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
   a selectable tip-loss correction, and a user-defined TSR interval. Results
   appear in a table and in a Cp/Ct plot against TSR.
+- **2D axisymmetric open turbine** — generate the domain, resolution region,
+  actuator disk, and hub as STEP files and one open-turbine assembly, without
+  creating a duct. The workflow stops after FreeCAD export and places a unique
+  handoff folder under `C:\OpTurbo\Temp Files` for a user-authored SpaceClaim
+  script and later workflow stages.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation
@@ -83,7 +88,7 @@ folder outside the source-code folder, for example
 
 ## Candidate pipeline
 
-Each candidate passes through these stages:
+The ducted workflow passes each candidate through these stages:
 
 1. **FreeCAD** creates the selected duct geometry and exports STEP files to
    that candidate's results directory.
@@ -101,6 +106,12 @@ Each candidate passes through these stages:
 
 Failed candidates are recorded with diagnostic details in their candidate
 folder and assigned a low fitness so the remaining optimization can continue.
+
+The **2D axisymmetric open turbine** workflow runs only FreeCAD. It writes the
+four profile STEP files and `open_turbine_assembly.step` to the candidate's
+`01_geometry/` folder, then copies them to the next unused
+`C:\OpTurbo\Temp Files\open_turbine_run_NNN\` folder. It does not invoke
+SpaceClaim, ANSYS Meshing, Fluent, or optimization.
 
 ### Overlap preparation
 

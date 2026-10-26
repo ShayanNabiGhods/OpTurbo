@@ -50,3 +50,7 @@ then calls `opturbo.simple_bem` with the bundled blade and polar tables. This
 panel runs locally and does not start the workflow pipeline. The single Help
 button in the top header opens the user manual;
 the Help menu retains the theory guide and About dialog.
+
+The Project workflow selector also offers a geometry-only open-turbine mode.
+Its workflow runner generates the STEP assembly; the GUI disables duct-design,
+mesh-study, meshing-settings, and CFD-settings controls for that workflow.

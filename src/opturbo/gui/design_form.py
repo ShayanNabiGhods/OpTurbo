@@ -15,6 +15,7 @@ from .widgets import ScrollableFrame, ToolTip
 class DesignFormMixin:
     def _build_design_tab(self) -> None:
         tab = ttk.Panedwindow(self.notebook, orient="horizontal")
+        self.design_tab = tab
         self.notebook.add(tab, text="  Design  ")
         left = ttk.Frame(tab, padding=8)
         right = ttk.Frame(tab, padding=8)

@@ -27,3 +27,8 @@ must provide. Current workflow settings remain in the shared project model;
 future workflow-only settings can be stored under
 `ProjectConfig.workflow_settings[workflow_id]`. Bundle new workflow assets in
 `resources/workflows/<workflow_id>/` and have that workflow select the folder.
+
+`axisymmetric_2d_open_turbine/` is the geometry-only open-turbine workflow. Its
+local README lists every file in the package. It creates a domain, resolution
+region, actuator disk, hub, and compound STEP assembly without a duct, then
+stops before SpaceClaim, meshing, or solver stages.

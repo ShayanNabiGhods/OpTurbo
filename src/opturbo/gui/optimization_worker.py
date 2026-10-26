@@ -12,6 +12,8 @@ from ..pipeline.overlap import evaluate_generation
 from ..pipeline.failures import failed_candidate
 from ..storage import ProjectStore
 from .configuration import saved_configuration_matches
+from ..paths import APPLICATION_ROOT as APP_ROOT
+from ..workflows import get_workflow
 
 
 class OptimizationWorkerMixin:
@@ -19,6 +21,11 @@ class OptimizationWorkerMixin:
         try:
             assert self.store is not None
             candidate = self.store.candidate_dir(0, 1)
+            workflow = get_workflow(self.config_model.workflow_id, APP_ROOT)
+            if getattr(workflow, "geometry_only", False):
+                assembly = self._runner().generate_assembly(self.config_model, candidate)
+                self.events.put(("done", f"STEP assembly created: {assembly}"))
+                return
             genome = {item.key: item.value for item in self.config_model.design_variables if item.optimize}
             self.events.put(("candidate", {"generation": 0, "candidate": 1, "genome": genome}))
             result = self._runner().evaluate(self.config_model, genome, candidate)
