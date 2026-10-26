@@ -12,7 +12,8 @@ This guide explains the controls in OpTurbo v0.3.2. The ducted workflow uses Fre
 3. In **Project**, select the workflow, give the project a name, choose a results folder outside the source tree, and check all four executable paths.
 4. For the ducted workflow, use **Design** to inspect the selected duct type and preview. The open-turbine workflow has no duct and hides this tab.
 5. In **Workflow Settings**, check geometry, mesh, and CFD/BEM inputs. Save the project.
-6. Use **Evaluate current design** once before starting the genetic algorithm, or use **Run performance evaluation** for an open turbine. Review the Monitor log if any stage fails.
+6. To use custom blade or airfoil data, import and save the headerless CSV files in **Aerodynamic Data**; check their units and dimensions against the formats in that chapter.
+7. Use **Evaluate current design** once before starting the genetic algorithm, or use **Run performance evaluation** for an open turbine. Review the Monitor log if any stage fails.
 
 The application validates configuration before launching expensive tools. Both workflows run geometry, SpaceClaim, meshing, and Fluent/BEM; only the ducted workflow supports genetic optimization. Candidates are saved independently so failures and successful results can be inspected later.
 
@@ -129,17 +130,32 @@ Fluent and BEM share the operating-point inputs. Use SI units here:
 - **Rotor angular speed**: rad/s; **Blade pitch**: degrees.
 - **BEM radial stations**: number of discrete stations spanning hub to tip. More stations resolve radial variation more finely and require more calculation.
 
-The CFD geometry and the BEM rotor dimensions must describe the same rotor. The application reads blade geometry and airfoil data from the bundled CFD tables; those are workflow resources, not controls in the GUI.
+The CFD geometry and BEM rotor dimensions must describe the same rotor. Use the **Aerodynamic Data** tab to edit or replace the active workflow's blade geometry and airfoil performance tables.
 
 ## Simple BEM tab {#simple-bem}
 
-The **Simple BEM** tab calculates a rotor performance curve without creating a duct/domain, meshing, or starting Fluent. It uses the flow speed, density, viscosity, rotor radius, hub radius, blade count, pitch, and radial-station count currently shown in **Workflow Settings → CFD / BEM**. Unsaved edits are used immediately. The calculation uses the bundled NTNU blade geometry and S826 lift/drag polar tables. Blade radius and chord are scaled together when the selected rotor radius differs from the table's 0.45 m reference radius; the blade span must still fit between the selected hub and rotor tip.
+The **Simple BEM** tab calculates a rotor performance curve without creating a duct/domain, meshing, or starting Fluent. It uses the flow speed, density, viscosity, rotor radius, hub radius, blade count, pitch, and radial-station count currently shown in **Workflow Settings → CFD / BEM**. Unsaved edits are used immediately. The calculation uses the active workflow's blade geometry and airfoil polar tables. Blade radius, chord, and twist are used as stored in the geometry CSV; they are not silently scaled. Set rotor and hub radii so the imported blade span lies within them.
 
 Set **Minimum TSR**, **Maximum TSR**, and **TSR interval**. The sweep includes values reached by repeatedly adding the interval while the result remains at or below the maximum, with a limit of 101 points per run. For example, 4 to 8 in steps of 0.5 evaluates 4, 4.5, …, 8. Rotor speed is calculated for each point from `omega = TSR * free-stream speed / rotor radius`.
 
 Choose **Prandtl** or **Bontempo 2025** for tip loss. Prandtl is the default and applies conventional tip and root loss. Bontempo applies its empirical tip correction with Prandtl root loss; its coefficients remain the values configured in Workflow Settings. Bontempo is a duct-calibrated correction and may not be appropriate for an unducted rotor.
 
-The **Results table** reports angular speed, power, Cp, Ct, and the number of radial stations whose induction iteration converged. The **Cp / Ct plot** sub-tab plots both coefficients against the actual TSR values from the sweep. A point can finish with some unconverged stations; review that count before using its performance values. These results are a reduced-order estimate from the bundled blade/polar data, not a CFD result or turbine certification.
+The **Results table** reports angular speed, power, Cp, Ct, and the number of radial stations whose induction iteration converged. The **Cp / Ct plot** sub-tab plots both coefficients against the actual TSR values from the sweep. A point can finish with some unconverged stations; review that count before using its performance values. These results are a reduced-order estimate from the active workflow's blade/polar data, not a CFD result or turbine certification.
+
+## Aerodynamic Data tab: edit and import CSV tables {#aerodynamic-data}
+
+The **Aerodynamic Data** tab edits the blade geometry and airfoil polar inputs used by both ducted and open-turbine CFD/BEM runs and by **Simple BEM**. Select a CSV from the **Table** menu. Double-click a displayed cell to edit its numeric value. Use **Import selected CSV…** to load a replacement file into the selected table; its layout is checked before it is staged. Use **Save tables** to validate the complete related set and write the staged files. **Discard edits** reloads the saved files. Leaving the tab does not save changes automatically. When changing workflows with staged edits, choose whether to save them to the current workflow before switching.
+
+Each workflow has a separate copy under `resources/workflows/<workflow-id>/cfd_tables/`. A save changes only the selected workflow's tables; past candidate results remain as they were. New evaluations and Simple BEM runs use the currently selected workflow's saved tables.
+
+All files use comma-separated decimal numbers, UTF-8 text, and **no header row**. Blank lines are ignored. The required formats are:
+
+- **`ntnu_geometry.csv`**: one blade section per row, exactly three columns in this order: `radius_m, chord_m, twist_deg`. Use at least two sections, positive radius and chord, and strictly increasing radii from hub to tip. Any section count is accepted. For example, `0.0525,0.0495,38` is one row. The CFD/BEM radial-station setting determines the calculation count. If that count matches the imported rows, the stations are preserved; otherwise radius, chord, and twist are linearly interpolated onto evenly spaced stations.
+- **`s826_alpha.csv`**: one angle-of-attack value in degrees per row, strictly increasing. Example rows: `-10` then `-8`.
+- **`s826_re.csv`**: one row containing at least two positive, strictly increasing Reynolds numbers. Example: `50000,70000,100000`.
+- **`s826_cl.csv`** and **`s826_cd.csv`**: numeric matrices with one row per angle in `s826_alpha.csv`, and one column per Reynolds number in `s826_re.csv`. The first row of each matrix belongs to the first angle; the first column belongs to the first Reynolds number. Both matrices must have exactly matching dimensions. Lift values may be positive or negative; drag values must be zero or positive.
+
+For a complete custom polar set, import matching alpha, Reynolds, lift, and drag files in any order, then save the set. Saving rejects incomplete or mismatched dimensions, nonnumeric/non-finite values, unordered axes, duplicate axis values, and invalid geometry. The same airfoil polar table is used at every radial blade section; the geometry CSV supplies section-wise radius, chord, and twist.
 
 ## BEM loss correction {#bem-model}
 

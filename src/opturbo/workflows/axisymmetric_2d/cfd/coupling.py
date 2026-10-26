@@ -7,15 +7,17 @@ from pathlib import Path
 
 from .bem import performance, solve, sources_from
 from .fluent import run, write_journal
+from .models import Blade
 from .reports import read_report
 
 
-def initial_sources(blade):
+def initial_sources(blade: Blade) -> tuple[list[float], list[float]]:
     """Create a smooth startup field with thickness-independent integrated load."""
     axial, tangential = [], []
     thickness_scale = 0.005 / blade.thickness
+    span = blade.radius[-1] - blade.radius[0]
     for radius in blade.radius:
-        mu = (radius - 0.045) / (0.45 - 0.045)
+        mu = (radius - blade.radius[0]) / span
         axial.append(-10000 * thickness_scale * math.sin(math.pi * mu) ** 2)
         tangential.append(1000.0 * thickness_scale)
     return axial, tangential
@@ -117,7 +119,8 @@ def run_coupling(config):
                       config.get("mesh_name", "axisymmetric_mesh.msh"),
                       config.get("fluent_iterations", 200),
                       config.get("fluent_settings", {}),
-                      config.get("case_name", "new_fluent_case_file.cas.h5"))
+                      config.get("case_name", "new_fluent_case_file.cas.h5"),
+                      turbine.hub_radius, turbine.radius)
         clear_report_files(work)
         status, output = run(config["fluent"], work, journal,
                              config.get("processors", 4))

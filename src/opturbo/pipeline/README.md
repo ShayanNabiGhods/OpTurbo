@@ -1,8 +1,7 @@
 # Shared pipeline support
 
-This package contains helpers shared across engineering workflows. It should
-not know the details of a duct shape, mesh script, or solver command. Concrete
-candidate stages are implemented in
+This package contains services shared across the application and engineering
+workflows. Concrete candidate stages are implemented in
 `opturbo.workflows.axisymmetric_2d.pipeline/` for the current workflow.
 
 ```text
@@ -16,6 +15,8 @@ pipeline/
 
 Use `process.py` for common process mechanics and `failures.py` for shared
 failure semantics. `overlap.py` schedules work; it does not implement a CAD or
-CFD stage. Workflow adapters should own commands, input files, and output
-checks. The runner facade preserves `opturbo.pipeline.runner` imports used by
-older callers.
+CFD stage. The new `aerodynamic_tables.py` service selects each workflow's
+independent `cfd_tables` folder, validates blade geometry and the related polar
+axes/matrices, and safely saves edited or imported CSV files for the
+Aerodynamic Data panel. The runner facade preserves `opturbo.pipeline.runner`
+imports used by older callers.

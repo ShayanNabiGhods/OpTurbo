@@ -71,9 +71,13 @@ folder outside the source-code folder, for example
   correction.
 - **Simple BEM** — calculate a rotor-only performance curve without launching
   geometry, duct/domain design, meshing, or CFD. The panel uses current flow
-  and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
+  and rotor values, the active workflow's NTNU blade geometry and S826 airfoil polars,
   a selectable tip-loss correction, and a user-defined TSR interval. Results
   appear side-by-side in a table on the left and a Cp/Ct plot on the right.
+- **Aerodynamic Data** — edit or import the active workflow's blade-section
+  geometry and airfoil lift/drag CSV tables. The panel checks numeric values,
+  section ordering, polar axes, and matrix dimensions before saving. See the
+  [manual's CSV format guide](docs/manual.md#aerodynamic-data) for exact layouts.
 - **2D axisymmetric open turbine** → generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
   creating a duct. Run FreeCAD, the packaged SpaceClaim script, ANSYS Meshing,
@@ -196,7 +200,7 @@ src/opturbo/
 │       └── pipeline/
 │           ├── runner.py          # Candidate stage coordination
 │           └── adapters/          # FreeCAD, SpaceClaim, Meshing, Fluent commands
-├── pipeline/                      # Shared process and optimization-pipeline helpers
+├── pipeline/                      # Shared process helpers and aerodynamic CSV services
 ├── geometry/, cfd/                # Compatibility imports for existing callers
 ├── models.py                      # Compatibility imports for domain models
 ├── optimizer.py                   # Genetic algorithm

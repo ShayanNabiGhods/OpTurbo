@@ -1,7 +1,7 @@
 # OpTurbo Theory Guide
 
 **Engineering ideas behind geometry, mesh, CFD/BEM coupling, standalone BEM, and search**
-Companion theory reference for OpTurbo v0.3.1 · October 2026
+Companion theory reference for OpTurbo v0.3.2 · October 2026
 
 This guide connects the equations and numerical models to the controls shown in the application. OpTurbo combines an axisymmetric CFD and actuator-disk workflow with a separate standalone radial blade-element/momentum calculation. Its coefficients are useful for comparing candidates under a consistent setup; they are not, by themselves, a complete three-dimensional turbine certification.
 
@@ -57,11 +57,43 @@ Mesh convergence is assessed from a sequence of systematically refined meshes by
 
 ## Blade element and momentum theory {#theory-bem}
 
-BEM divides the blade span between hub and tip into radial stations. At each station, a blade element sees a relative velocity assembled from axial flow and rotation. Its inflow angle determines angle of attack after blade pitch and local twist are accounted for by the blade data. Bundled airfoil lift and drag tables supply sectional forces; blade count scales the forces into annular loads.
+BEM divides the blade span between hub and tip into radial stations. At each station, a blade element sees a relative velocity assembled from axial flow and rotation. Its inflow angle determines angle of attack after blade pitch and local twist are accounted for by the blade data. The active workflow's airfoil lift and drag tables supply sectional forces; blade count scales the forces into annular loads.
 
 Momentum theory relates those loads to changes in axial and angular momentum through an annulus. The solver seeks axial induction `a` and tangential induction `a_prime` that make blade-element and momentum loads agree. Radial integration produces rotor thrust and torque. Induction factors describe the relationship between free-stream/rotation and the disturbed disk flow; their conventions should be read with the implementation and plotted distributions.
 
 The GUI's radial station count sets discretization of the span. A low count may miss rapid root/tip changes; a higher count improves radial sampling but cannot fix incorrect blade tables or unsuitable loss corrections.
+
+### Blade and airfoil CSV data {#theory-aerodynamic-data}
+
+The **Aerodynamic Data** panel edits five headerless CSV files. Each workflow owns its own copy. `ntnu_geometry.csv` contains one radial blade section per row as `radius_m, chord_m, twist_deg`; at least two rows are required, with positive radius and chord and strictly increasing radius. The number of source rows is not fixed. The `stations` control selects the actual number of BEM/CFD reporting stations. When the requested count equals the CSV row count, the source radii are retained. Otherwise, the loader creates evenly spaced target radii and linearly interpolates chord and twist over the source geometry:
+
+$$
+r_k = r_0 + k * (r_tip - r_0) / (n - 1),     k = 0 ... n - 1
+$$
+
+$$
+q(r) = q_i + (q_(i+1) - q_i) * (r - r_i) / (r_(i+1) - r_i)
+$$
+
+Here `n` is the requested calculation-station count, `q` is either chord or twist, and `r_i <= r <= r_(i+1)` brackets the target radius. The width array `dr` has one value per station; consecutive radial differences are used, and the last station reuses the final interval width for the endpoint integration. Solver reports, source-term rows, and Fluent line surfaces are sized from this station array rather than assuming a fixed section count.
+
+`s826_alpha.csv` is one increasing angle-of-attack value (degrees) per row. `s826_re.csv` is one row of increasing positive Reynolds-number values. `s826_cl.csv` and `s826_cd.csv` are rectangular matrices: rows follow the alpha file, and columns follow the Reynolds-number file. Thus matrix entry `(i,j)` stores the coefficient at `(alpha_i, Re_j)`. The loader transposes each matrix into its internal `[Re][alpha]` lookup layout. Drag coefficients must be nonnegative. The same polar is used at every radial section; the current table format does not assign different airfoil families to different blade stations.
+
+For values between two angles and Reynolds numbers, the code performs bilinear interpolation. First interpolate along angle at both adjacent Reynolds columns, then interpolate those results along Reynolds:
+
+$$
+C_(alpha,j) = (1 - t_alpha) * C_(i,j) + t_alpha * C_(i+1,j)
+$$
+
+$$
+C(alpha, Re) = (1 - t_Re) * C_(alpha,j) + t_Re * C_(alpha,j+1)
+$$
+
+$$
+t_alpha = (alpha - alpha_i) / (alpha_(i+1) - alpha_i);     t_Re = (Re - Re_j) / (Re_(j+1) - Re_j)
+$$
+
+This is applied separately to lift and drag. Axes must be strictly increasing and each coefficient matrix must exactly match the axis lengths. Values requested outside a polar axis are clamped to the nearest endpoint. These checks allow arbitrary radial section counts while preventing ambiguous interpolation from ragged tables, duplicate axes, or mislabeled matrix dimensions.
 
 ### The BEM equations used by this branch
 
@@ -121,7 +153,7 @@ These equations describe the code's discrete station calculation and sign conven
 
 ### Standalone BEM sweep {#theory-simple-bem}
 
-The **Simple BEM** tab solves the induction factors directly from blade-element and annular momentum balance. It has no Fluent velocity field and uses the bundled blade and airfoil tables as its rotor model. For each selected tip-speed ratio, it derives angular speed as:
+The **Simple BEM** tab solves the induction factors directly from blade-element and annular momentum balance. It has no Fluent velocity field and uses the active workflow's blade and airfoil tables as its rotor model. For each selected tip-speed ratio, it derives angular speed as:
 
 $$
 lambda = omega * R / U_inf;     omega = lambda * U_inf / R
@@ -157,7 +189,7 @@ $$
 P = omega*Q;     Cp = P / (0.5*rho*pi*R^2*U_inf^3);     Ct_rotor = T / (0.5*rho*pi*R^2*U_inf^2)
 $$
 
-Here positive `T` and `Ct_rotor` mean thrust in the incoming-flow direction. The standalone model reuses the current flow and rotor values and scales the bundled NTNU radius and chord distribution together when rotor radius differs from its 0.45 m reference. The airfoil interpolation clamps angle and Reynolds number to the S826 table's bounds. A curve is only as representative as the bundled blade and polar data and selected correction; it is not independent validation of an arbitrary turbine design.
+Here positive `T` and `Ct_rotor` mean thrust in the incoming-flow direction. The standalone model uses the active workflow's blade radii, chords, and twist exactly as stored; it does not rescale imported geometry. The blade span must fit between the selected hub and rotor radii. Airfoil interpolation clamps angle and Reynolds number to the active polar axes. A curve is only as representative as the selected blade and polar data and loss correction; it is not independent validation of an arbitrary turbine design.
 
 ## Tip and root losses {#theory-losses}
 

@@ -42,6 +42,7 @@ class LayoutMixin:
         self._build_design_tab()
         self._build_workflow_tab()
         self._build_simple_bem_tab()
+        self._build_aerodynamic_data_tab()
         self._build_mesh_study_tab()
         self._build_optimization_tab()
         self._build_monitor_tab()

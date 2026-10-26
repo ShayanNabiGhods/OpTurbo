@@ -120,12 +120,7 @@ class SimpleBemViewMixin:
             workflow_id = (self.workflow_id_var.get() if hasattr(self, "workflow_id_var")
                            else self.config_model.workflow_id)
             resources = get_workflow(workflow_id, APPLICATION_ROOT).resources / "cfd_tables"
-            base_radius = 0.45
             blade = load_blade(resources, stations=int(raw_stations))
-            scale = rotor_radius / base_radius
-            blade.radius = [value * scale for value in blade.radius]
-            blade.chord = [value * scale for value in blade.chord]
-            blade.dr = [value * scale for value in blade.dr]
             airfoil = load_airfoil(resources)
             results = run_tsr_sweep(
                 flow, turbine, blade, airfoil,

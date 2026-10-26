@@ -28,6 +28,7 @@ gui/
 ├── monitor_view.py             # Monitor tab and result panels
 ├── monitor_results.py          # Candidate/history event ingestion and updates
 ├── simple_bem_view.py          # Standalone TSR sweep form, table and Cp/Ct plot
+├── aerodynamic_data_view.py    # Workflow-aware editor/importer for blade and airfoil CSV tables
 ├── accessibility_view.py       # Accessibility preferences UI
 ├── appearance.py               # Runtime theme and numeric-entry behavior
 ├── labels.py                   # Field labels and concise help descriptions
@@ -46,8 +47,12 @@ event handlers. Mixins share state through the root window instance. Keep
 engineering validation in `opturbo.domain` and external execution in the
 workflow pipeline; UI modules should not call FreeCAD, SpaceClaim, Meshing, or
 Fluent directly. `simple_bem_view.py` reads the current flow and rotor fields,
-then calls `opturbo.simple_bem` with the bundled blade and polar tables. This
-panel runs locally and does not start the workflow pipeline. The single Help
+then calls `opturbo.simple_bem` with the selected workflow's blade and polar
+tables. This panel runs locally and does not start the engineering workflow.
+`aerodynamic_data_view.py` calls `opturbo.pipeline.aerodynamic_tables` to load,
+validate, and save the selected workflow's CSV resources. It stages edits and
+writes them only after the blade and polar tables pass cross-file validation;
+the exact formats are in `docs/manual.md` under Aerodynamic Data. The single Help
 button in the top header opens the user manual;
 the Help menu retains the theory guide and About dialog.
 

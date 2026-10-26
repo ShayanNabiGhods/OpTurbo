@@ -2,6 +2,9 @@
 
 import subprocess
 from pathlib import Path
+from typing import Any
+
+from .models import Blade
 
 
 VISCOUS_MODEL_COMMANDS = {
@@ -68,9 +71,18 @@ def first_iteration_setup(settings: dict) -> list[str]:
     return lines
 
 
-def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.msh",
-                  fluent_iterations=200, fluent_settings=None,
-                  case_name="new_fluent_case_file.cas.h5"):
+def write_journal(
+    path: str | Path,
+    blade: Blade,
+    first: bool,
+    iteration: int,
+    mesh_name: str = "axisymmetric_mesh.msh",
+    fluent_iterations: int = 200,
+    fluent_settings: dict[str, Any] | None = None,
+    case_name: str = "new_fluent_case_file.cas.h5",
+    hub_radius: float = 0.045,
+    rotor_radius: float = 0.45,
+) -> None:
     """Write a journal; only iteration one creates radial line surfaces."""
     path = Path(path)
     # Fluent surface IDs can contain gaps or change after a mesh replacement.
@@ -87,8 +99,8 @@ def write_journal(path, blade, first, iteration, mesh_name="axisymmetric_mesh.ms
     if first:
         lines += ["", "; Create radial surfaces once"]
         for index, (radius, width) in enumerate(zip(blade.radius, blade.dr), 1):
-            inner = max(radius - width / 2, 0.045) if index == 1 else radius - width / 2
-            outer = 0.45 if index == len(blade.radius) else radius + width / 2
+            inner = max(radius - width / 2, hub_radius) if index == 1 else radius - width / 2
+            outer = rotor_radius if index == len(blade.radius) else radius + width / 2
             lines.append(f"/surface/line-surface line-{index:02d} 0 {inner:.10g} 0 {outer:.10g}")
         lines += ["", '/file/write-case "generated_coupling_case.cas.h5"']
     lines += ["", '/define/user-defined/execute-on-demand "read_ad_sources::libudf"',

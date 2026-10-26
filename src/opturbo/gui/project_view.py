@@ -122,7 +122,10 @@ class ProjectViewMixin:
         if not path:
             return
         try:
-            self.config_model = ProjectStore.load(Path(path))
+            loaded_config = ProjectStore.load(Path(path))
+            if not self._prepare_cfd_table_workflow_change(loaded_config.workflow_id):
+                return
+            self.config_model = loaded_config
             self.store = ProjectStore(Path(self.config_model.save_dir))
             history_file = Path(self.config_model.save_dir) / self._history_filename(self.config_model.workflow_id)
             self.history = json.loads(history_file.read_text(encoding="utf-8")).get("evaluations", []) if history_file.exists() else []
@@ -136,6 +139,8 @@ class ProjectViewMixin:
     def _new_project(self) -> None:
         if self.worker and self.worker.is_alive():
             messagebox.showwarning("Optimization running", "Stop the current run before creating a new project.")
+            return
+        if not self._prepare_cfd_table_workflow_change("axisymmetric_2d"):
             return
         self.config_model = ProjectConfig()
         self.store = None
@@ -184,3 +189,4 @@ class ProjectViewMixin:
         """Store the selected workflow ID while showing its readable title."""
         self.workflow_id_var.set(self.workflow_label_to_id[self.workflow_label_var.get()])
         self._apply_workflow_mode()
+        self._handle_cfd_table_workflow_change()

@@ -1,6 +1,7 @@
 """Blade-element momentum calculations used by the coupling driver."""
 
 import math
+from collections.abc import Sequence
 
 from .models import Airfoil, Blade, Flow, Performance, Results, Sources, Turbine
 
@@ -51,8 +52,25 @@ def loss_factor(flow: Flow, turbine: Turbine, radius: float, phi: float) -> floa
     return max(1e-4, tip_loss * root_loss)
 
 
-def solve(flow, turbine, blade, airfoil, axial, tangential):
+def solve(
+    flow: Flow,
+    turbine: Turbine,
+    blade: Blade,
+    airfoil: Airfoil,
+    axial: Sequence[float],
+    tangential: Sequence[float],
+) -> Results:
     """Calculate induction, angles, airfoil loads, and BEM loads."""
+    station_count = len(blade.radius)
+    if station_count < 1 or any(len(values) != station_count for values in (
+        blade.chord, blade.twist, blade.dr, axial, tangential
+    )):
+        raise ValueError("Blade geometry and Fluent velocity arrays must have the same count of one or more stations.")
+    if (len(airfoil.alpha) < 2 or len(airfoil.reynolds) < 2 or
+            len(airfoil.lift) != len(airfoil.reynolds) or
+            len(airfoil.drag) != len(airfoil.reynolds) or
+            any(len(row) != len(airfoil.alpha) for matrix in (airfoil.lift, airfoil.drag) for row in matrix)):
+        raise ValueError("Airfoil lift/drag tables must match their angle and Reynolds axes.")
     values = [[] for _ in range(8)]
     for radius, chord, twist, ua, ut in zip(blade.radius, blade.chord, blade.twist, axial, tangential):
         a = 1 - ua / flow.speed
@@ -67,22 +85,27 @@ def solve(flow, turbine, blade, airfoil, axial, tangential):
         cl = _table(airfoil.alpha, airfoil.reynolds, airfoil.lift, angle, reynolds_value)
         cd = _table(airfoil.alpha, airfoil.reynolds, airfoil.drag, angle, reynolds_value)
         normal = cl * cosine + cd * sine
-        tangential = cl * sine - cd * cosine
+        tangential_coefficient = cl * sine - cd * cosine
         solidity = turbine.blades * chord / (2 * math.pi * radius)
         fn = -0.5 * flow.density * speed ** 2 * solidity * normal * loss / blade.thickness
-        ft = 0.5 * flow.density * speed ** 2 * solidity * tangential * loss / blade.thickness
+        ft = 0.5 * flow.density * speed ** 2 * solidity * tangential_coefficient * loss / blade.thickness
         for target, item in zip(values, (a, ap, math.degrees(phi), angle, reynolds_value, loss, fn, ft)):
             target.append(item)
     return Results(*values)
 
 
-def sources_from(results):
+def sources_from(results: Results) -> Sources:
     """Convert blade loads into equal-and-opposite fluid sources."""
     return Sources(results.dT[:], [-value for value in results.dQ])
 
 
-def performance(flow, turbine, blade, results):
+def performance(flow: Flow, turbine: Turbine, blade: Blade, results: Results) -> Performance:
     """Integrate radial loads using each station's actual width."""
+    station_count = len(blade.radius)
+    if station_count < 2 or any(len(values) != station_count for values in (
+        blade.dr, results.dT, results.dQ
+    )):
+        raise ValueError("Blade spacing and BEM load arrays must match the radial station count.")
     thrust = sum(2 * math.pi * r * dr * blade.thickness * load
                  for r, dr, load in zip(blade.radius, blade.dr, results.dT))
     torque = sum(r * 2 * math.pi * r * dr * blade.thickness * load

@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 
 from ..models import AccessibilitySettings, ProjectConfig, VariableSpec
 from ..storage import ProjectStore
+from .aerodynamic_data_view import AerodynamicDataViewMixin
 from .accessibility_view import AccessibilityViewMixin
 from .appearance import AppearanceMixin
 from .config_editor import ConfigEditorMixin
@@ -33,6 +34,7 @@ from .workflow_settings import WorkflowSettingsMixin
 class OpTurboWindow(
     tk.Tk,
     AppearanceMixin,
+    AerodynamicDataViewMixin,
     AccessibilityViewMixin,
     ProjectViewMixin,
     SettingsFormMixin,

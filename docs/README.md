@@ -25,3 +25,9 @@ python scripts/build_documentation.py
 Both guides use numbered chapter/subchapter headings and a continuous layout.
 The PDF outline follows that hierarchy, and the SVG illustrations are included
 from the source documents by the builder.
+
+The Manual's **Aerodynamic Data** chapter documents the headerless CSV formats
+accepted by the Aerodynamic Data panel, including variable blade-section row
+counts and the required angle/Reynolds polar matrix dimensions. The Theory
+Guide explains how those tables are interpolated and used by the BEM solver.
+Regenerate both PDF files after editing either Markdown source.

@@ -14,7 +14,7 @@ opturbo/
 ├── workflows/
 │   ├── selection.py            # Saved workflow ID to implementation lookup
 │   └── axisymmetric_2d/         # Current FreeCAD → SpaceClaim → Meshing → CFD
-├── pipeline/                   # Shared process/overlap/failure utilities
+├── pipeline/                   # Process helpers and workflow-aware aerodynamic CSV operations
 ├── simple_bem.py               # CFD-free BEM induction solver and TSR sweeps
 ├── geometry/                   # Compatibility exports for 2D geometry
 ├── cfd/                        # Compatibility exports for 2D CFD/BEM
@@ -36,5 +36,7 @@ worker scripts and facade packages exist to preserve historical entry points;
 their implementations live in `workflows/axisymmetric_2d/`. Candidate data is
 written through the storage and workflow saving layers to the user's selected
 project directory, outside this source tree. The standalone `simple_bem.py`
-solver uses the shared BEM model and polar interpolation to calculate a TSR
-sweep without launching a workflow, building a duct, or invoking CFD.
+solver uses the shared BEM model and the selected workflow's polar tables to
+calculate a TSR sweep without launching a workflow, building a duct, or
+invoking CFD. The GUI's Aerodynamic Data tab delegates table loading, format
+checks, and writes to `pipeline/aerodynamic_tables.py`.
