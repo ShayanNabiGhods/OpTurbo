@@ -127,9 +127,6 @@ class MeshStudySettingsMixin:
                         saved_enabled = payload.get("enabled_variables", {})
                         enabled.update({name: bool(value) for name, value in saved_enabled.items()
                                         if name in enabled})
-                        saved_strategy = payload.get("sweep_strategy", "Screening + combinations")
-                        if saved_strategy in {"Screening + combinations", "Evenly spaced"}:
-                            self.mesh_study_strategy_var.set(saved_strategy)
                         saved_bounds = payload.get("variable_bounds", {})
                         bounds = mesh_variable_bounds(settings)
                         for name, bound in saved_bounds.items():

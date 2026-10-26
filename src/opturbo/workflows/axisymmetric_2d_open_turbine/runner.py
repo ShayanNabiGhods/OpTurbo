@@ -1,6 +1,6 @@
 """Candidate pipeline for open-turbine CFD/BEM evaluation and mesh studies."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import math
 from pathlib import Path
@@ -189,8 +189,11 @@ class OpenTurbineRunner:
         case = self.workflow_resources / "fluent" / "open_turbine_assembly.cas.h5"
         if not case.is_file():
             raise FileNotFoundError("Open-turbine Fluent baseline case was not found: " + str(case))
+        cfd_settings = replace(config.cfd, source_initialization="conservative",
+                               previous_source_weight=1.0)
+        run_config = replace(config, cfd=cfd_settings)
         return self.cfd_stage.run(
-            config, mesh, output, baseline_case=case, case_name=case.name,
+            run_config, mesh, output, baseline_case=case, case_name=case.name,
         )
 
     def prepare_mesh_study_geometry(self, config: ProjectConfig,
@@ -319,13 +322,18 @@ class OpenTurbineRunner:
             if key != "duct_size_cm"
         }
         configuration["tools"].pop("handoff_dir", None)
+        configuration["cfd"]["source_initialization"] = "conservative"
+        configuration["cfd"]["previous_source_weight"] = 1.0
+        cfd_settings = dict(asdict(config.cfd))
+        cfd_settings["source_initialization"] = "conservative"
+        cfd_settings["previous_source_weight"] = 1.0
         return {
             "workflow_id": "axisymmetric_2d_open_turbine",
             "configuration": configuration,
             "geometry": asdict(geometry),
             "mesh": {key: value for key, value in asdict(config.mesh).items()
                      if key != "duct_size_cm"},
-            "cfd": asdict(config.cfd),
+            "cfd": cfd_settings,
         }
 
     @staticmethod

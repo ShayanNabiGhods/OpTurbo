@@ -1,26 +1,26 @@
 # OpTurbo User Manual
 
-**Build, evaluate, optimize, and review an axisymmetric ducted wind-turbine design**
-User guide for OpTurbo v0.3.1 · October 2026
+**Build, evaluate, optimize, and review axisymmetric wind-turbine designs**
+User guide for OpTurbo v0.3.2 - October 2026
 
-This guide explains the controls in OpTurbo v0.3.1. The standard workflow uses FreeCAD, SpaceClaim, ANSYS Meshing, and Fluent, with a blade-element/momentum (BEM) calculation coupled to Fluent. A separate Simple BEM tab calculates rotor performance without running that workflow. Engineering programs and valid licenses are required for a full CFD evaluation. The smaller project, geometry-preview, and configuration steps can be completed before those programs are installed.
+This guide explains the controls in OpTurbo v0.3.2. The ducted workflow uses FreeCAD, SpaceClaim, ANSYS Meshing, and Fluent, with a blade-element/momentum (BEM) calculation coupled to Fluent and optional genetic optimization. The open-turbine workflow evaluates a duct-free design and retains mesh study, without optimization. A separate Simple BEM tab calculates rotor performance without running either CFD workflow. Engineering programs and valid licenses are required for a full CFD evaluation. Project setup, configuration, and the ducted geometry preview can be completed before those programs are installed.
 
 ## Start here {#start-here}
 
 1. Install Windows Python 3.10 or newer with Tkinter, FreeCAD 1.1, and the ANSYS release used by your project. The default executable paths target ANSYS v242.
 2. Open PowerShell in the project folder and run `python run.py`.
 3. In **Project**, select the workflow, give the project a name, choose a results folder outside the source tree, and check all four executable paths.
-4. In **Design**, inspect the selected duct type and preview. Start with a known valid design and narrow variable ranges.
+4. For the ducted workflow, use **Design** to inspect the selected duct type and preview. The open-turbine workflow has no duct and hides this tab.
 5. In **Workflow Settings**, check geometry, mesh, and CFD/BEM inputs. Save the project.
-6. Use **Evaluate current design** once before starting the genetic algorithm. Review the Monitor log if any stage fails.
+6. Use **Evaluate current design** once before starting the genetic algorithm, or use **Run performance evaluation** for an open turbine. Review the Monitor log if any stage fails.
 
-The application validates configuration before launching expensive tools. A candidate then passes through geometry, SpaceClaim, meshing, and Fluent/BEM. Candidates are saved independently so failures and successful results can be inspected later.
+The application validates configuration before launching expensive tools. Both workflows run geometry, SpaceClaim, meshing, and Fluent/BEM; only the ducted workflow supports genetic optimization. Candidates are saved independently so failures and successful results can be inspected later.
 
 ## Project tab {#project-settings}
 
 ### Engineering workflow
 
-This branch registers `axisymmetric_2d`, which is shown as the axisymmetric 2D duct-turbine workflow. The workflow owns the geometry, solver adapters, and resource selection. Projects store the workflow ID, so opening an older project without an ID falls back to `axisymmetric_2d`.
+This branch registers `axisymmetric_2d` (ducted turbine) and `axisymmetric_2d_open_turbine` (open turbine). The workflow owns the geometry, solver adapters, and resource selection. The ducted workflow has a **Design** tab and genetic optimization. The open workflow hides **Design**, renames **Optimization** to **Run**, and supports a single performance evaluation plus mesh study. Projects store the workflow ID, so opening an older project without an ID falls back to `axisymmetric_2d`.
 
 ### Project name and Save folder
 
@@ -38,13 +38,13 @@ Set the executable path for each installed program:
 - **SpaceClaim executable** opens the staged assembly using the supplied recorded script.
 - **ANSYS Workbench executable** launches the candidate meshing journal.
 - **Fluent executable** runs CFD and participates in the BEM coupling.
-- **Fixed SpaceClaim handoff folder** is protected. The recorded script requires `C:\OpTurbo\Temp Files\profile_assembly.step` and writes `C:\OpTurbo\Temp Files\profile_assembly.scdoc`. OpTurbo stages and collects those files for each candidate.
+- **Fixed SpaceClaim handoff folder** is used by the ducted workflow. The recorded script requires `C:\OpTurbo\Temp Files\profile_assembly.step` and writes `C:\OpTurbo\Temp Files\profile_assembly.scdoc`. OpTurbo stages and collects those files for each candidate. The open workflow uses its packaged assembly script and candidate-local files.
 
 Use Browse to select an executable. A path that points to the wrong release or a missing program will prevent that stage from starting. The SpaceClaim script depends on recorded body and face identities; substantial topology changes can invalidate it.
 
 ## Design tab: duct family and preview {#design-family}
 
-The Design tab supports two duct families:
+The ducted workflow's Design tab supports two duct families. It is hidden in the open-turbine workflow, which has no duct-design variables:
 
 - **airfoil** makes a closed PARSEC profile with upper and lower contours. Its chord and angle are shown as design variables alongside the upper/lower profile variables.
 - **flanged** makes a lower PARSEC contour and a flange. Its chord, wall thickness, flange length and angle are shown with five lower-contour variables.
@@ -91,7 +91,7 @@ Mesh sizes and thicknesses are in centimetres; the curvature limit is in degrees
 
 - **Global element size** controls the background mesh away from refinements.
 - **Resolution-region size** sets a target inside the refined flow region.
-- **Duct-wall size** and **Hub-wall size** refine the solid boundaries.
+- **Duct-wall size** and **Hub-wall size** refine the solid boundaries. Duct-wall sizing is hidden for the open-turbine workflow, which has no duct.
 - **Growth rate** controls the increase in cell size between nearby zones. Values must be greater than 1; gradual growth generally avoids abrupt transitions.
 - **Curvature angle** asks the mesher for finer sampling of curved geometry at smaller angle limits.
 - **CPU cores for parallel part meshing** can be **Program Controlled** or an explicit count. This is an ANSYS Meshing setting, not the Fluent processor count.
@@ -106,9 +106,9 @@ Mesh Study holds the design fixed and compares mesh configurations. Geometry and
 
 ### Candidate controls
 
-Choose a **Mesh method** and **CPU cores** as in Workflow Settings. For each mesh-size variable, tick its checkbox to include it in the sweep. The **Minimum**, **Current**, and **Maximum** values define a sweep interval and reference mesh setting. Size variables cover global, growth, curvature, resolution, duct, hub, and—when inflation is enabled—inflation controls. Disabled rows are ignored. Inflation settings are not swept when inflation is disabled.
+Choose a **Mesh method** and **CPU cores** as in Workflow Settings. For each mesh-size variable, tick its checkbox to include it in the sweep. The **Minimum**, **Current**, and **Maximum** values define a sweep interval and reference mesh setting. Size variables cover global, growth, curvature, resolution, duct (ducted workflow only), hub, and—when inflation is enabled—inflation controls. Disabled rows are ignored. Inflation settings are not swept when inflation is disabled.
 
-**Automatic sweep cases** must be between 1 and 100. **Screening + combinations** first tests low/high values and then useful combinations within the case budget. **Evenly spaced** distributes cases through the enabled ranges. Both are finite candidate plans, not proofs that the mesh is fully converged.
+**Automatic sweep cases** must be between 1 and 100. The application uses only an evenly spaced sweep: each enabled value moves together from its minimum to its maximum across the requested cases. A one-case sweep uses the midpoint of each enabled range; integer inflation-layer counts round upward. This is a finite candidate plan, not proof that the mesh is fully converged.
 
 **Run this mesh setup** evaluates one panel configuration. **Run automatic mesh sweep** evaluates the planned cases. **Load mesh values from Workflow Settings** copies the main meshing settings into this panel. **Resume mesh study** continues a saved unfinished study and reuses completed cases. **Stop after current case** lets the current evaluation finish; **Terminate whole process** ends the active process. Termination can leave a candidate incomplete.
 
@@ -155,8 +155,8 @@ With Bontempo selected, **A**, **B**, and **C** control the empirical expression
 - **Relaxation** is the fraction of a new source update applied each coupling step, from 0 to 1. Lower values damp changes but can slow convergence.
 - **Fluent processors** sets parallel solver processes. This is separate from mesh CPU cores.
 - **Keep iteration data** retains intermediate Fluent data files, increasing storage use.
-- **Source initialization** is **Conservative** or **Previous candidate**. Conservative uses the generated starting source field. Previous candidate reuses the last successfully completed candidate's final relaxed actuator-disk sources; the first candidate falls back to conservative initialization.
-- **Previous-source weight** blends old and new starting sources: 0 is fully conservative, 1 uses fully previous sources. This control is active only in previous-candidate mode. If warm-starting destabilizes a run, return to Conservative.
+- In the ducted workflow, **Source initialization** is **Conservative** or **Previous candidate**. Conservative uses the generated starting source field. Previous candidate reuses the last successfully completed candidate's final relaxed actuator-disk sources; the first candidate falls back to conservative initialization.
+- **Previous-source weight** blends old and new starting sources: 0 is fully conservative, 1 uses fully previous sources. This control is active only in previous-candidate mode. The open-turbine workflow hides both source-initialization controls and always uses conservative initialization.
 
 The genetic algorithm can prepare one next candidate through meshing while the current candidate runs Fluent by enabling **Overlap meshing with Fluent (experimental)**. It is limited to one generation, consumes additional memory, and may require concurrent ANSYS licenses. The next Fluent run waits for its mesh to finish.
 
@@ -170,11 +170,11 @@ Choose **k-omega standard**, **k-epsilon standard**, or **Spalart-Allmaras**. Th
 
 **Pressure interpolation**, **Momentum discretization**, **Swirl discretization**, and **Pressure-velocity coupling** select the corresponding Fluent schemes at the first solver setup. The model-specific `k`, `epsilon`, `omega`, and turbulent-viscosity (`nut`) discretization fields apply only when their equation is active. Scheme names are Fluent choices; higher-order schemes may need a better initial field or more iterations to converge. These settings configure the supplied journal and should be changed with solver expertise.
 
-## Optimization tab {#optimization-controls}
+## Optimization / Run tab {#optimization-controls}
 
 ### Objective and genetic algorithm
 
-**Optimization criterion** chooses Cp, Ct, Cp normalized by duct-tip area, or Ct normalized by duct-tip area. The selected value is fitness to maximize. Duct-tip normalization uses the maximum radius of the candidate geometry; it changes the metric and may change which candidate ranks highest.
+This tab is called **Run** for the open-turbine workflow; it offers a single evaluation and does not show optimization controls. For ducted designs, **Optimization criterion** chooses Cp, Ct, Cp normalized by duct-tip area, or Ct normalized by duct-tip area. The selected value is fitness to maximize. Duct-tip normalization uses the maximum radius of the candidate geometry; it changes the metric and may change which candidate ranks highest.
 
 - **Population size** is the number of candidates per generation.
 - **Generations** is the number of generations to evaluate.
@@ -204,12 +204,14 @@ The display controls change the interface immediately and are saved with the pro
 
 ## Candidate pipeline and saved files {#candidate-results}
 
-Each evaluation receives a new sequential candidate folder. The four stages are:
+Each evaluation receives a new sequential candidate folder. The ducted workflow's four stages are:
 
 1. **Geometry**: FreeCAD creates the domain, hub, actuator disk, and duct faces; STEP files and inputs are saved.
 2. **SpaceClaim**: the supplied recorded script imports the staged geometry and saves its document.
 3. **Meshing**: a candidate-specific Workbench journal and mesh script create `axisymmetric_mesh.msh`.
 4. **Fluent/BEM**: the baseline case loads the mesh; Fluent and BEM alternate source updates until convergence or the iteration limit. Reports and result files are retained.
+
+The open-turbine workflow uses the same four candidate stages, but its geometry contains no duct, its packaged SpaceClaim and Fluent resources are used, and its **Design** tab and optimization controls are absent.
 
 The project folder includes `opturbo_project.json`, optimization history and state, `best/`, `logs/`, `exports/`, `candidates/`, and (when used) `mesh_study/`. A candidate normally contains `candidate.json`, a `result.json` or `failure.json`, and `01_geometry/`, `02_spaceclaim/`, `03_mesh/`, and `04_cfd/` subfolders. Candidate directories preserve configuration, inputs, outputs, logs, and summaries when available. Failed candidates retain diagnostics and receive low fitness so search can continue.
 

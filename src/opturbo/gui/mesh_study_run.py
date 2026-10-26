@@ -38,7 +38,7 @@ class MeshStudyRunMixin:
             messagebox.showerror("Cannot start mesh study", str(error))
 
     def _start_automatic_mesh_study(self) -> None:
-        """Run a baseline, mesh-control screening, and space-filling sweep."""
+        """Run an evenly spaced sweep across the selected mesh bounds."""
         try:
             config = self._read_model_from_fields()
             panel_mesh = self._read_mesh_study_settings()
@@ -56,9 +56,7 @@ class MeshStudyRunMixin:
             config = replace(config, mesh=base_mesh)
             self._validate_positive_settings(config)
             candidates = automatic_mesh_settings(base_mesh, count, base_mesh.method,
-                                                 enabled_fields=enabled_sizes, bounds=bounds,
-                                                 strategy=("even" if self.mesh_study_strategy_var.get() == "Evenly spaced"
-                                                           else "screening"))
+                                                 enabled_fields=enabled_sizes, bounds=bounds)
             if not self._save_project():
                 return
             config = replace(deepcopy(self.config_model), mesh=base_mesh)
@@ -90,7 +88,6 @@ class MeshStudyRunMixin:
             "configuration": config.to_dict(),
             "candidates": [asdict(candidate) for candidate in candidates],
             "enabled_variables": enabled,
-            "sweep_strategy": self.mesh_study_strategy_var.get(),
         }
         atomic_json(state_path, state)
         self.mesh_study_progress.configure(maximum=len(candidates), value=0)
@@ -128,9 +125,6 @@ class MeshStudyRunMixin:
                 return
             candidates = [MeshSettings(**item) for item in state["candidates"]]
             enabled = {name: bool(value) for name, value in state.get("enabled_variables", {}).items()}
-            saved_strategy = state.get("sweep_strategy", "Screening + combinations")
-            if saved_strategy in {"Screening + combinations", "Evenly spaced"}:
-                self.mesh_study_strategy_var.set(saved_strategy)
             if not candidates:
                 raise ValueError("The saved mesh study contains no candidate settings.")
             history_path = self.store.root / "mesh_study" / "history.json"
@@ -158,7 +152,6 @@ class MeshStudyRunMixin:
                 mesh_settings.pop("duct_size_cm", None)
             atomic_json(self.store.root / "mesh_study" / "settings.json", {
                 "mesh_settings": mesh_settings, "enabled_variables": enabled,
-                "sweep_strategy": self.mesh_study_strategy_var.get(),
                 "variable_bounds": {
                     name: {"minimum": self.mesh_study_min_vars[name].get(),
                            "maximum": self.mesh_study_max_vars[name].get()}

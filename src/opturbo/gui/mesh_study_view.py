@@ -83,14 +83,10 @@ class MeshStudyViewMixin:
             row=count_row, column=0, columnspan=2, sticky="w", padx=4, pady=(8, 3))
         ttk.Spinbox(controls, from_=1, to=100, textvariable=self.mesh_study_count_var, width=8).grid(
             row=count_row, column=2, sticky="w", padx=4, pady=(8, 3))
-        self.mesh_study_strategy_var = tk.StringVar(value="Screening + combinations")
-        ttk.Label(controls, text="Sweep strategy").grid(
+        ttk.Label(controls, text="Sweep method").grid(
             row=count_row + 1, column=0, columnspan=2, sticky="w", padx=4, pady=3)
-        self.mesh_study_strategy_control = ttk.Combobox(
-            controls, textvariable=self.mesh_study_strategy_var,
-            values=("Screening + combinations", "Evenly spaced"), state="readonly", width=24)
-        self.mesh_study_strategy_control.grid(
-            row=count_row + 1, column=2, columnspan=3, sticky="ew", padx=4, pady=3)
+        ttk.Label(controls, text="Evenly spaced").grid(
+            row=count_row + 1, column=2, columnspan=3, sticky="w", padx=4, pady=3)
         self.mesh_study_manual_button = ttk.Button(
             controls, text="Run this mesh setup", command=self._start_manual_mesh_study)
         self.mesh_study_manual_button.grid(row=count_row + 2, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
@@ -110,7 +106,7 @@ class MeshStudyViewMixin:
                                               sticky="ew", padx=4, pady=3)
         self.mesh_study_progress = ttk.Progressbar(controls, mode="determinate")
         self.mesh_study_progress.grid(row=count_row + 7, column=0, columnspan=5, sticky="ew", padx=4, pady=(8, 3))
-        ttk.Label(controls, text="Screening tests low/high values then combinations; evenly spaced sweeps all enabled values from minimum to maximum.",
+        ttk.Label(controls, text="Evenly spaced sweeps move all enabled values from minimum to maximum.",
                   style="Subtitle.TLabel", wraplength=280, justify="left").grid(
             row=count_row + 8, column=0, columnspan=5, sticky="w", padx=4, pady=(3, 8))
         ttk.Button(controls, text="Load mesh values from Workflow Settings",

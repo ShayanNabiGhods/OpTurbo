@@ -19,9 +19,11 @@ axisymmetric_2d/
 `geometry_worker.py` writes STEP artifacts for the candidate. The pipeline
 then runs SpaceClaim and Meshing before invoking `cfd_worker.py`. The two
 worker entry points isolate FreeCAD and Fluent's Python/runtime dependencies
-from the desktop application's interpreter. `mesh_study.py` provides shared
-logic for the dedicated mesh-study mode. Implementations for each stage are
-described in the README files inside `geometry/`, `cfd/`, and `pipeline/`.
+from the desktop application's interpreter. `mesh_study.py` provides the
+evenly spaced automatic candidate generator and mesh-count extraction. Each
+enabled mesh value traverses its requested bounds together; integer inflation
+layer counts round upward. Implementations for each stage are described in the
+README files inside `geometry/`, `cfd/`, and `pipeline/`.
 
 The workflow uses the established repository `resources/` directory to keep
 the recorded SpaceClaim script and ANSYS input paths stable. Generated

@@ -33,3 +33,7 @@ data in `04_cfd/`. Only domain, resolution, and hub sizing are used; duct sizing
 and duct-wall inflation are omitted. The **Run** panel evaluates one candidate
 at a time; genetic optimization controls are not part of this workflow. Mesh
 study remains available.
+
+The GUI hides the Design tab and source-initialization controls for this
+workflow. The runner also passes conservative source initialization to the
+shared CFD/BEM stage and records that normalized setting with each candidate.

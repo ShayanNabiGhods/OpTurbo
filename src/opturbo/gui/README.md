@@ -54,6 +54,8 @@ the Help menu retains the theory guide and About dialog.
 The Project workflow selector also offers an open-turbine run workflow. It
 executes the packaged SpaceClaim script, creates a duct-free ANSYS mesh, then
 runs the Fluent/BEM evaluation. Candidate artifacts stay in the selected
-project folder. The Optimization tab becomes a simple Run panel, with no GA
-controls; mesh study remains available. Duct design and duct mesh sizing are
-hidden for this workflow.
+project folder. The Design tab is hidden and the Optimization tab becomes a
+simple Run panel, with no GA controls; mesh study remains available. Duct
+design, duct mesh sizing, and source-initialization controls are hidden for
+this workflow, which always uses conservative source initialization. Automatic
+mesh studies use evenly spaced values only.

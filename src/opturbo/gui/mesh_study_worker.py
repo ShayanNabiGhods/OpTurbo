@@ -40,7 +40,7 @@ class MeshStudyWorkerMixin:
             run_root = study_root / "runs" / run_id
             runner = self._runner()
             run_only = bool(getattr(get_workflow(config.workflow_id, APP_ROOT), "run_only", False))
-            if config.cfd.source_initialization == "previous_candidate":
+            if not run_only and config.cfd.source_initialization == "previous_candidate":
                 for previous in reversed(records):
                     if previous.get("status") != "completed":
                         continue

@@ -74,12 +74,16 @@ folder outside the source-code folder, for example
   and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
   a selectable tip-loss correction, and a user-defined TSR interval. Results
   appear in a table and in a Cp/Ct plot against TSR.
-- **2D axisymmetric open turbine** — generate the domain, resolution region,
+- **2D axisymmetric open turbine** → generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
   creating a duct. Run FreeCAD, the packaged SpaceClaim script, ANSYS Meshing,
   and Fluent/BEM to evaluate one design. Results stay in the selected project's
-  candidate folder. The workflow has no genetic optimization controls; mesh
-  study remains available.
+  candidate folder. The workflow hides the Design tab, has no genetic
+  optimization controls, and always uses conservative CFD source
+  initialization; mesh study remains available.
+- **Mesh Study** → compare full CFD/BEM candidates using an evenly spaced sweep
+  across the selected bounds. All enabled values advance together from their
+  minimums to maximums.
 - **Optimization** — evaluate the current design, configure and start the
   genetic algorithm, resume a saved run, and review candidate results. A run
   can be stopped safely; active Fluent work and any active overlap preparation

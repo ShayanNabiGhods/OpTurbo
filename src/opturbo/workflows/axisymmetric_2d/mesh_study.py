@@ -12,21 +12,10 @@ _FIELDS = (
     "global_size_cm", "growth_rate", "curvature_angle_deg", "resolution_size_cm",
     "duct_size_cm", "hub_size_cm", "inflation_layers", "inflation_max_thickness_cm",
 )
-_PRIMES = (2, 3, 5, 7, 11, 13, 17, 19)
-
-
-def _halton(index: int, base: int) -> float:
-    """Return one deterministic Halton-sequence value in [0, 1)."""
-    result, fraction = 0.0, 1.0 / base
-    while index:
-        result += fraction * (index % base)
-        index //= base
-        fraction /= base
-    return result
 
 
 def mesh_variable_bounds(settings: MeshSettings) -> dict[str, tuple[float, float]]:
-    """Build useful screening ranges around the current mesh settings."""
+    """Build default sweep bounds around the current mesh settings."""
     return {
         "global_size_cm": (settings.global_size_cm * 0.6, settings.global_size_cm * 1.5),
         "growth_rate": (max(1.01, settings.growth_rate - 0.10), min(1.5, settings.growth_rate + 0.10)),
@@ -45,54 +34,25 @@ def mesh_variable_bounds(settings: MeshSettings) -> dict[str, tuple[float, float
 def automatic_mesh_settings(
     base: MeshSettings, count: int, method: str, enabled_fields: set[str] | None = None,
     bounds: dict[str, tuple[float, float]] | None = None,
-    strategy: str = "screening",
 ) -> list[MeshSettings]:
-    """Build automatic mesh cases using screening or evenly spaced sweep strategy."""
+    """Build mesh cases by evenly spacing enabled values across their bounds."""
     if count < 1:
         raise ValueError("An automatic mesh sweep must include at least one case.")
     selected_method = "Default" if method == "Default (ANSYS automatic)" else method
     baseline = replace(base, method=selected_method)
-    candidates = [baseline]
     bounds = bounds or mesh_variable_bounds(base)
     variable_names = [name for name in _FIELDS if enabled_fields is None or name in enabled_fields]
-
-    if strategy == "even":
-        candidates = []
-        for index in range(count):
-            fraction = 0.5 if count == 1 else index / (count - 1)
-            values = {}
-            for name in variable_names:
-                low, high = bounds[name]
-                if name == "inflation_layers":
-                    value = high - fraction * (high - low)
-                    values[name] = math.ceil(value)
-                else:
-                    values[name] = low + fraction * (high - low)
-            candidates.append(replace(baseline, **values))
-        return candidates
-    if strategy != "screening":
-        raise ValueError(f"Unknown automatic mesh sweep strategy: {strategy}")
-
-    # Screen each variable at its low and high range while holding others fixed.
-    for name in variable_names:
-        low, high = bounds[name]
-        for value in (low, high):
-            if len(candidates) >= count:
-                return candidates
-            if name == "inflation_layers":
-                value = int(round(value))
-            candidates.append(replace(baseline, **{name: value}))
-
-    # Add low-discrepancy combinations to explore interactions between sizes.
-    sequence_index = 1
-    while len(candidates) < count:
+    candidates = []
+    for index in range(count):
+        fraction = 0.5 if count == 1 else index / (count - 1)
         values = {}
-        for name, prime in zip(variable_names, _PRIMES):
+        for name in variable_names:
             low, high = bounds[name]
-            fraction = _halton(sequence_index, prime)
-            value = low + fraction * (high - low)
-            values[name] = int(round(value)) if name == "inflation_layers" else value
-        sequence_index += 1
+            if name == "inflation_layers":
+                value = math.ceil(low + fraction * (high - low))
+            else:
+                value = low + fraction * (high - low)
+            values[name] = value
         candidates.append(replace(baseline, **values))
     return candidates
 

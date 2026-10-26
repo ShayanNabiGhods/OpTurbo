@@ -21,7 +21,7 @@ class OptimizationControlsMixin:
         """Expose controls supported by the selected workflow's implemented stages."""
         run_only = self._run_only_selected()
         if hasattr(self, "design_tab"):
-            self.notebook.tab(self.design_tab, state="disabled" if run_only else "normal")
+            self.notebook.tab(self.design_tab, state="hidden" if run_only else "normal")
         if hasattr(self, "mesh_study_tab"):
             self.notebook.tab(self.mesh_study_tab, state="normal")
         if hasattr(self, "workflow_pages"):
@@ -29,17 +29,33 @@ class OptimizationControlsMixin:
             self.workflow_pages.tab(self.cfd_settings_page, state="normal")
         setting_controls = getattr(self, "setting_controls", {})
         for (section, name), controls in setting_controls.items():
-            is_duct_only = ((section == "geometry" and
-                             (name.startswith("duct_") or name == "design_type")) or
-                            (section == "mesh" and name == "duct_size_cm") or
-                            (section == "tools" and name == "handoff_dir"))
-            if not is_duct_only:
+            is_hidden_for_open_workflow = (
+                (section == "geometry" and
+                 (name.startswith("duct_") or name == "design_type")) or
+                (section == "mesh" and name == "duct_size_cm") or
+                (section == "tools" and name == "handoff_dir") or
+                (section == "cfd" and name in {
+                    "source_initialization", "previous_source_weight"})
+            )
+            if not is_hidden_for_open_workflow:
                 continue
             for control in controls:
                 if run_only:
                     control.grid_remove()
                 else:
                     control.grid()
+        source_initialization = getattr(self, "field_vars", {}).get(
+            ("cfd", "source_initialization"))
+        if source_initialization is not None:
+            if run_only:
+                if not hasattr(self, "_saved_source_initialization"):
+                    self._saved_source_initialization = source_initialization.get()
+                source_initialization.set("conservative")
+            elif hasattr(self, "_saved_source_initialization"):
+                source_initialization.set(self._saved_source_initialization)
+                del self._saved_source_initialization
+            if hasattr(self, "_refresh_source_weight_control"):
+                self._refresh_source_weight_control()
         if hasattr(self, "hub_duct_settings_group"):
             self.hub_duct_settings_group.configure(
                 text="Hub placement" if run_only else "Hub and duct placement")

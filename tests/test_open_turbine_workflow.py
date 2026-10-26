@@ -73,9 +73,16 @@ class OpenTurbineWorkflowTests(unittest.TestCase):
         runner.cfd_stage = Mock()
         mesh = Path("candidate/03_mesh/open_turbine_assembly.msh")
         output = Path("candidate/04_cfd")
-        runner._cfd(ProjectConfig(), mesh, output)
+        config = ProjectConfig()
+        config.cfd.source_initialization = "previous_candidate"
+        config.cfd.previous_source_weight = 0.4
+        runner._cfd(config, mesh, output)
         runner.cfd_stage.run.assert_called_once()
         args, kwargs = runner.cfd_stage.run.call_args
+        self.assertEqual(args[0].cfd.source_initialization, "conservative")
+        self.assertEqual(args[0].cfd.previous_source_weight, 1.0)
+        self.assertEqual(config.cfd.source_initialization, "previous_candidate")
+        self.assertEqual(config.cfd.previous_source_weight, 0.4)
         self.assertEqual(args[1:], (mesh, output))
         self.assertEqual(kwargs["baseline_case"], case)
         self.assertEqual(kwargs["case_name"], case.name)
