@@ -1,26 +1,21 @@
-# Open-turbine meshing resource
+# 2D axisymmetric open-turbine resources
 
-Resources for the duct-free 2D axisymmetric open-turbine workflow. The app
-runs the packaged SpaceClaim script against each candidate's geometry, creates
-the mesh, then evaluates the Fluent/BEM coupling. Candidate artifacts are kept
-in the selected project; no run directories are created under `Temp Files`.
+This folder contains all inputs needed to run the open workflow independently
+of the ducted workflow.
 
 ```text
 axisymmetric_2d_open_turbine/
-├── README.md                            # This resource guide
-├── mesh_script.py                       # Fluid-domain selections and duct-free sizing
-├── fluent/
-│   └── open_turbine_assembly.cas.h5     # Open-turbine Fluent baseline case
-└── spaceclaim/
-    └── open_turbine_assembly.scscript   # Recorded open-turbine CAD preparation
+├── README.md
+├── spaceclaim/open_turbine_assembly.scscript  # Recorded duct-free CAD preparation
+├── meshing/mesh_script.py                     # Open-domain selections and sizing
+├── meshing/extract_mesh_artifact.py           # Workbench mesh exporter
+├── fluent/open_turbine_assembly.cas.h5        # Open-turbine baseline case
+├── fluent/ad_sources.c                        # Local actuator-disk UDF source copy
+├── fluent/libudf/                             # Local Fluent UDF bundle copy
+└── cfd_tables/                                # Local blade and airfoil data copy
 ```
 
-The workflow writes a candidate-local copy of the SpaceClaim package with only
-its fixed STEP and SCDOC paths redirected into `01_geometry/` and
-`02_spaceclaim/`. The mesh script is copied to `03_mesh/` with configured
-settings applied. It defines the inlet, outlet, axis, outer wall, hub wall,
-resolution region, and actuator disk selections without duct controls.
-
-The Fluent stage uses this open-turbine baseline case and the shared actuator
-disk UDF and blade/polar tables from `resources/fluent/` and
-`resources/cfd_tables/`. The shared UDF is not duplicated for the open workflow.
+The runner uses the local SpaceClaim and mesh scripts, baseline case, UDF
+files, extractor, and blade/polar tables. It stages candidate-specific files
+in the selected project folder; it does not create run folders in
+`C:\OpTurbo\Temp Files`.

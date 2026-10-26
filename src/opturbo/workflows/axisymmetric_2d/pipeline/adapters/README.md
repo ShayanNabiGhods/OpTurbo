@@ -19,4 +19,4 @@ Adapters do not read Tk widgets or mutate project forms. The runner owns
 candidate lifecycle and persistence; shared process functions live in
 `opturbo.pipeline.process`. The SpaceClaim adapter depends on the supplied
 recorded script and immutable handoff paths documented in
-`resources/spaceclaim/README.md`.
+`resources/workflows/axisymmetric_2d/spaceclaim/README.md`.

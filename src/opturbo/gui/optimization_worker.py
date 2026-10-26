@@ -1,12 +1,14 @@
 """Focused Tkinter behavior for the OpTurbo application."""
 
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 import queue
 from tkinter import messagebox
 import uuid
 
 from ..optimizer import GeneticAlgorithm
+from ..models import ProjectConfig
 from ..objectives import OBJECTIVES, objective_value
 from ..pipeline.overlap import evaluate_generation
 from ..pipeline.failures import failed_candidate
@@ -17,6 +19,61 @@ from ..workflows import get_workflow
 
 
 class OptimizationWorkerMixin:
+    def _tsr_sweep_worker(self, points: list[float], base_config: ProjectConfig) -> None:
+        """Evaluate independent open-turbine candidates at each requested TSR."""
+        try:
+            assert self.store is not None
+            runner = self._runner()
+            completed = 0
+            attempted = 0
+            first_evaluation = len(self.history)
+            for index, tsr in enumerate(points, start=1):
+                if self.stop_requested.is_set():
+                    break
+                omega = tsr * base_config.cfd.flow_speed_m_s / base_config.cfd.rotor_radius_m
+                cfd = replace(base_config.cfd, omega_rad_s=omega,
+                              source_initialization="conservative", previous_source_weight=1.0)
+                config = replace(deepcopy(base_config), cfd=cfd)
+                candidate = self.store.candidate_dir(0, index)
+                attempted += 1
+                self.events.put(("log", f"Starting open-turbine TSR {tsr:g} (omega={omega:.7g} rad/s)"))
+                try:
+                    result = runner.evaluate(config, candidate)
+                except Exception as error:
+                    self.events.put(("log", f"TSR {tsr:g} failed in {candidate.name}: {error}"))
+                    self.events.put(("result", {
+                        "evaluation": first_evaluation + index,
+                        "generation": 0,
+                        "candidate": index,
+                        "run_only": True,
+                        "tsr": tsr,
+                        "cp": -1e30,
+                        "ct": None,
+                        "status": "failed",
+                        "error": str(error),
+                    }))
+                    self.events.put(("run_sweep_progress", index))
+                    if self.terminate_requested.is_set():
+                        break
+                    continue
+                event = {
+                    "evaluation": first_evaluation + index,
+                    "generation": 0,
+                    "candidate": index,
+                    "run_only": True,
+                    "tsr": tsr,
+                    "omega_rad_s": omega,
+                    **result,
+                }
+                self.events.put(("result", event))
+                completed += 1
+                self.events.put(("run_sweep_progress", index))
+            stopped = self.stop_requested.is_set()
+            state = "stopped" if stopped else "completed"
+            self.events.put(("done", f"Open-turbine TSR sweep {state}: {completed}/{attempted} attempted points completed."))
+        except Exception as error:
+            self.events.put(("error", str(error)))
+
     def _single_worker(self) -> None:
         try:
             assert self.store is not None
@@ -171,6 +228,8 @@ class OptimizationWorkerMixin:
                     self._show_mesh_study_selection()
                 elif kind == "mesh_study_progress":
                     self.mesh_study_progress.configure(value=int(payload))
+                elif kind == "run_sweep_progress":
+                    self.progress.configure(value=int(payload))
                 elif kind == "done":
                     self.status_var.set(str(payload))
                     self._append_log(str(payload))

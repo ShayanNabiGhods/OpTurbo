@@ -36,7 +36,8 @@ class MonitorResultsMixin:
         ct_normalized = self._format_table_value(event.get("ct_normalized"))
         status = event.get("status", "completed")
         self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
-                                 event.get("candidate"), f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
+                                 event.get("candidate"), self._format_table_value(event.get("tsr")),
+                                 f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
                                  f"{ct:.7g}" if math.isfinite(ct) else "—", cp_normalized, ct_normalized, status))
         with self.history_lock:
             progress_value = (sum(1 for row in self.history
@@ -46,7 +47,9 @@ class MonitorResultsMixin:
         fitness = float(event.get("fitness", cp))
         objective = str(event.get("objective", "cp"))
         if run_only:
-            self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
+            if status == "completed":
+                self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
+            self._refresh_run_tsr_plot()
         elif (status == "completed" and objective == self.config_model.ga.objective
                 and fitness > self.best_fitness):
             self.best_fitness = fitness
@@ -88,14 +91,15 @@ class MonitorResultsMixin:
             ct_value = event.get("ct")
             ct = float(ct_value) if ct_value is not None else float("nan")
             self.results_tree.insert("", "end", values=(event.get("evaluation"), event.get("generation"),
-                                     event.get("candidate"),
+                                     event.get("candidate"), self._format_table_value(event.get("tsr")),
                                      f"{cp:.7g}" if math.isfinite(cp) and cp > -1e20 else "—",
                                      f"{ct:.7g}" if math.isfinite(ct) else "—",
                                      self._format_table_value(event.get("cp_normalized")),
                                      self._format_table_value(event.get("ct_normalized")),
                                      event.get("status", "completed")))
             if run_only:
-                self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
+                if event.get("status", "completed") == "completed":
+                    self.best_var.set(f"Latest run: Cp: {cp:.7g}    Ct: {ct:.7g}")
                 continue
             fitness = float(event.get("fitness", cp))
             objective = str(event.get("objective", "cp"))
@@ -105,6 +109,28 @@ class MonitorResultsMixin:
                 self.best_fitness = fitness
                 self.best_var.set(self._best_result_text(event))
         self._refresh_plots(self.history[-1] if self.history else {})
+        if run_only:
+            self._refresh_run_tsr_plot()
+
+    def _refresh_run_tsr_plot(self) -> None:
+        """Plot completed open-workflow sweep results against TSR."""
+        points = []
+        for row in self.history:
+            try:
+                tsr, cp, ct = float(row["tsr"]), float(row["cp"]), float(row["ct"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (row.get("status", "completed") == "completed"
+                    and math.isfinite(tsr) and math.isfinite(cp) and math.isfinite(ct)
+                    and cp > -1e20):
+                points.append((tsr, cp, ct))
+        points.sort(key=lambda point: point[0])
+        series = [("Cp", [point[1] for point in points]),
+                  ("Ct", [point[2] for point in points])]
+        if points:
+            self.run_tsr_plot.set_series(series, x_values=[point[0] for point in points])
+        else:
+            self.run_tsr_plot.set_series(series)
 
     def _refresh_plots(self, latest: dict) -> None:
         cp_values = [float(row.get("cp", row.get("fitness", 0))) for row in self.history if float(row.get("cp", row.get("fitness", -1e30))) > -1e20]

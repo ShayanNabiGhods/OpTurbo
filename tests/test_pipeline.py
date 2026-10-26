@@ -17,7 +17,8 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("Interactive=False", journal)
 
     def test_protected_spaceclaim_contract_is_unchanged(self):
-        script = Path(__file__).parents[1] / "resources" / "spaceclaim" / "profile_assembly.scscript"
+        script = (Path(__file__).parents[1] / "resources" / "workflows" / "axisymmetric_2d"
+                  / "spaceclaim" / "profile_assembly.scscript")
         with zipfile.ZipFile(script) as archive:
             source = archive.read("_script").decode("utf-8")
         self.assertIn(r"C:\OpTurbo\Temp Files\profile_assembly.step", source)

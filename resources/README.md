@@ -1,23 +1,27 @@
-# Bundled engineering resources
+# Workflow resources
 
-`resources/` holds source inputs and vendor scripts required by the selectable
-engineering workflows. These are inputs; candidate-specific copies and
-generated outputs are written to the selected project directory.
+All source assets used by an engineering workflow live under its own folder in
+`resources/workflows/`. The app selects that folder from the workflow ID;
+runtime code does not fall back to another workflow's files. Candidate outputs
+are copied into the selected project folder.
 
 ```text
 resources/
-├── README.md                              # This resource map and path policy
-├── spaceclaim/                            # Ducted workflow's recorded CAD script
-├── meshing/                               # Ducted ANSYS script and mesh extractor
-├── fluent/                                # Shared actuator-disk UDF and build outputs
-├── cfd_tables/                            # Blade geometry, airfoil polars and setup
-└── workflows/axisymmetric_2d_open_turbine/ # Open workflow CAD, mesh and Fluent case
+├── README.md
+└── workflows/
+    ├── axisymmetric_2d/
+    │   ├── spaceclaim/
+    │   ├── meshing/
+    │   ├── fluent/
+    │   └── cfd_tables/
+    └── axisymmetric_2d_open_turbine/
+        ├── spaceclaim/
+        ├── meshing/
+        ├── fluent/
+        └── cfd_tables/
 ```
 
-The existing tool scripts depend on stable resource and handoff paths. Do not
-move or rename their inputs without updating the workflow's resource loading
-and pipeline adapter together. New workflow assets should live under
-`resources/workflows/<workflow_id>/` and be selected by that workflow. The
-open-turbine workflow reuses `fluent/` and `cfd_tables/`; its `README.md`
-explains the packaged SpaceClaim script, duct-free mesh script, and baseline
-Fluent case.
+The two Fluent/UDF and CFD-table trees are independent copies. Update both
+copies deliberately when a shared engineering input changes. The ducted
+recorded SpaceClaim script must retain its fixed STEP/SCDOC paths and object
+selections. See each workflow README for the files and their roles.

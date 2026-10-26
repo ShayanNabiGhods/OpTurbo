@@ -30,8 +30,8 @@ class OpenTurbineRunner:
     def __init__(self, application_root: Path, emit: Callable[[str], None] = print,
                  cancel: Callable[[], bool] | None = None):
         self.root = Path(application_root)
-        self.resources = self.root / "resources"
-        self.workflow_resources = self.resources / "workflows" / "axisymmetric_2d_open_turbine"
+        self.resources = self.root / "resources" / "workflows" / "axisymmetric_2d_open_turbine"
+        self.workflow_resources = self.resources
         self.emit = emit
         self.cancel = cancel
         self.cfd_stage = FluentBEMStage(self)
@@ -149,7 +149,7 @@ class OpenTurbineRunner:
         self._validate_mesh_settings(config)
         output = Path(output)
         output.mkdir(parents=True, exist_ok=True)
-        template = self.workflow_resources / "mesh_script.py"
+        template = self.workflow_resources / "meshing" / "mesh_script.py"
         mesh_script = output / "open_turbine_mesh_script.py"
         mesh_script.write_text(self._mesh_script(config, geometry, template), encoding="utf-8")
         staged_scdoc = output / "open_turbine_assembly.scdoc"
@@ -297,7 +297,7 @@ class OpenTurbineRunner:
         """Reject an incomplete workflow installation before starting FreeCAD."""
         required = (
             self.workflow_resources / "spaceclaim" / "open_turbine_assembly.scscript",
-            self.workflow_resources / "mesh_script.py",
+            self.workflow_resources / "meshing" / "mesh_script.py",
             self.workflow_resources / "fluent" / "open_turbine_assembly.cas.h5",
             self.resources / "meshing" / "extract_mesh_artifact.py",
             self.resources / "fluent" / "ad_sources.c",

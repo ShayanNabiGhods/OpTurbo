@@ -4,6 +4,7 @@ import threading
 from tkinter import messagebox
 from typing import Callable
 
+from ..simple_bem import tsr_values
 from ..pipeline import PipelineRunner
 from ..paths import APPLICATION_ROOT as APP_ROOT
 from .configuration import saved_configuration_matches
@@ -68,22 +69,28 @@ class OptimizationControlsMixin:
         if hasattr(self, "run_only_note"):
             if run_only:
                 self.run_only_note.grid()
+                self.run_sweep_frame.grid()
                 self.ga_settings_frame.grid_remove()
                 self.ga_actions.pack_forget()
                 self.single_button.configure(text="Run performance evaluation")
                 self.results_title.configure(text="Performance evaluation results")
                 self.results_tree.configure(displaycolumns=self.run_only_columns)
+                self.run_results_notebook.tab(self.run_plot_page, state="normal")
                 self.best_var.set("Latest run: Cp: —    Ct: —")
             else:
                 self.run_only_note.grid_remove()
+                self.run_sweep_frame.grid_remove()
                 self.ga_settings_frame.grid()
                 self.ga_actions.pack(fill="x")
                 self.single_button.configure(text="Evaluate current design")
                 self.results_title.configure(text="Optimization progress")
                 self.results_tree.configure(displaycolumns=self.results_tree["columns"])
+                self.run_results_notebook.tab(self.run_plot_page, state="hidden")
                 self.best_var.set(self._best_result_text())
         if hasattr(self, "single_button"):
             self.single_button.configure(state="disabled" if running else "normal")
+            if hasattr(self, "run_sweep_button"):
+                self.run_sweep_button.configure(state="disabled" if running or not run_only else "normal")
             self.start_button.configure(state="disabled" if running or run_only else "normal")
             self.resume_button.configure(state="disabled" if running or run_only else "normal")
         if hasattr(self, "mesh_study_manual_button"):
@@ -143,6 +150,31 @@ class OptimizationControlsMixin:
         status = ("Running open-turbine performance evaluation" if self._run_only_selected()
                   else "Evaluating current design")
         self._start_worker(self._single_worker, status)
+
+    def _run_tsr_sweep(self) -> None:
+        """Run the open-workflow CFD/BEM solver at an evenly spaced TSR range."""
+        if not self._run_only_selected():
+            return
+        try:
+            points = tsr_values(
+                float(self.run_tsr_min_var.get()),
+                float(self.run_tsr_max_var.get()),
+                float(self.run_tsr_step_var.get()),
+            )
+            if not self._require_saved_project():
+                return
+            config = self._read_model_from_fields()
+            if config.cfd.flow_speed_m_s <= 0 or config.cfd.rotor_radius_m <= 0:
+                raise ValueError("Wind speed and rotor radius must be positive for a TSR sweep.")
+        except (TypeError, ValueError) as error:
+            messagebox.showerror("Cannot start TSR sweep", str(error))
+            return
+        self.progress.configure(maximum=len(points), value=0)
+        self._start_worker(
+            lambda: self._tsr_sweep_worker(points, config),
+            f"Running open-turbine CFD/BEM TSR sweep ({len(points)} points)",
+            task="run_sweep",
+        )
 
     def _run_ga(self) -> None:
         self._start_ga(resume=False)

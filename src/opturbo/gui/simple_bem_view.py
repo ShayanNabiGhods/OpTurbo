@@ -3,10 +3,11 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..paths import RESOURCES_ROOT
+from ..paths import APPLICATION_ROOT
 from ..simple_bem import run_tsr_sweep
 from ..workflows.axisymmetric_2d.cfd.models import Flow, Turbine
 from ..workflows.axisymmetric_2d.cfd.resources import load_airfoil, load_blade
+from ..workflows import get_workflow
 from .plot import LinePlot
 
 
@@ -53,12 +54,12 @@ class SimpleBemViewMixin:
         self.simple_bem_status_var = tk.StringVar(value="Ready. The sweep uses the current Workflow Settings turbine inputs.")
         ttk.Label(tab, textvariable=self.simple_bem_status_var, style="Subtitle.TLabel").grid(
             row=2, column=0, sticky="nw", pady=(8, 4))
-        results_tabs = ttk.Notebook(tab)
-        results_tabs.grid(row=3, column=0, sticky="nsew")
-        table_page = ttk.Frame(results_tabs, padding=6)
-        plot_page = ttk.Frame(results_tabs, padding=6)
-        results_tabs.add(table_page, text="Results table")
-        results_tabs.add(plot_page, text="Cp / Ct plot")
+        results_pane = ttk.Panedwindow(tab, orient="horizontal")
+        results_pane.grid(row=3, column=0, sticky="nsew")
+        table_page = ttk.Frame(results_pane, padding=6)
+        plot_page = ttk.Frame(results_pane, padding=6)
+        results_pane.add(table_page, weight=1)
+        results_pane.add(plot_page, weight=1)
         table_page.rowconfigure(0, weight=1)
         table_page.columnconfigure(0, weight=1)
         columns = ("tsr", "omega", "power", "cp", "ct", "convergence")
@@ -75,9 +76,11 @@ class SimpleBemViewMixin:
             self.simple_bem_table.heading(name, text=title)
             self.simple_bem_table.column(name, width=width, anchor="center")
         yscroll = ttk.Scrollbar(table_page, orient="vertical", command=self.simple_bem_table.yview)
-        self.simple_bem_table.configure(yscrollcommand=yscroll.set)
+        xscroll = ttk.Scrollbar(table_page, orient="horizontal", command=self.simple_bem_table.xview)
+        self.simple_bem_table.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
         self.simple_bem_table.grid(row=0, column=0, sticky="nsew")
         yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, sticky="ew")
         self.simple_bem_plot = LinePlot(
             plot_page, "Standalone rotor performance", "Tip-speed ratio, TSR (-)",
             "Coefficient (-)", markers=True, smooth=False, y_step=0.1,
@@ -114,7 +117,9 @@ class SimpleBemViewMixin:
                 bontempo_g_b=number("bontempo_g_b"),
                 bontempo_g_c=number("bontempo_g_c"),
             )
-            resources = RESOURCES_ROOT / "cfd_tables"
+            workflow_id = (self.workflow_id_var.get() if hasattr(self, "workflow_id_var")
+                           else self.config_model.workflow_id)
+            resources = get_workflow(workflow_id, APPLICATION_ROOT).resources / "cfd_tables"
             base_radius = 0.45
             blade = load_blade(resources, stations=int(raw_stations))
             scale = rotor_radius / base_radius

@@ -21,8 +21,7 @@ class FluentBEMStage(PipelineStage):
         self.runner.emit("[4/4] Running persistent Fluent/BEM coupling")
         tables = output / "resources"
         fluent_workdir = output / "fluent"
-        shared_resources = self.runner.root / "resources"
-        tables_source = self.runner.resources / "cfd_tables" if baseline_case is None else shared_resources / "cfd_tables"
+        tables_source = self.runner.resources / "cfd_tables"
         shutil.copytree(tables_source, tables, dirs_exist_ok=True)
         if baseline_case is None:
             shutil.copytree(self.runner.resources / "fluent", fluent_workdir, dirs_exist_ok=True,
@@ -31,9 +30,9 @@ class FluentBEMStage(PipelineStage):
             fluent_workdir.mkdir(parents=True, exist_ok=True)
             case_name = case_name or baseline_case.name
             shutil.copy2(baseline_case, fluent_workdir / case_name)
-            shutil.copytree(shared_resources / "fluent" / "libudf", fluent_workdir / "libudf",
+            shutil.copytree(self.runner.resources / "fluent" / "libudf", fluent_workdir / "libudf",
                             dirs_exist_ok=True)
-            shutil.copy2(shared_resources / "fluent" / "ad_sources.c", fluent_workdir / "ad_sources.c")
+            shutil.copy2(self.runner.resources / "fluent" / "ad_sources.c", fluent_workdir / "ad_sources.c")
         cfd_settings = {
             "fluent": require_executable(config.tools.fluent, "Fluent"),
             **({"case_name": case_name} if case_name else {}),

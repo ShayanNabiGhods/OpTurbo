@@ -30,9 +30,11 @@ The candidate keeps FreeCAD STEP files and its run configuration in
 `02_spaceclaim/`, the mesh script, Workbench project, journal, logs, and Fluent
 mesh in `03_mesh/`, and the shared UDF, case, BEM tables, Fluent logs, and result
 data in `04_cfd/`. Only domain, resolution, and hub sizing are used; duct sizing
-and duct-wall inflation are omitted. The **Run** panel evaluates one candidate
-at a time; genetic optimization controls are not part of this workflow. Mesh
-study remains available.
+and duct-wall inflation are omitted. The **Run** panel supports one candidate
+or an evenly spaced TSR sweep. Sweep points use independent candidate folders,
+and results can be viewed in a table or as Cp/Ct against TSR. Genetic
+optimization controls are not part of this workflow. Mesh study remains
+available.
 
 The GUI hides the Design tab and source-initialization controls for this
 workflow. The runner also passes conservative source initialization to the

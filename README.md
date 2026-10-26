@@ -73,14 +73,14 @@ folder outside the source-code folder, for example
   geometry, duct/domain design, meshing, or CFD. The panel uses current flow
   and rotor values, the bundled NTNU blade geometry and S826 airfoil polars,
   a selectable tip-loss correction, and a user-defined TSR interval. Results
-  appear in a table and in a Cp/Ct plot against TSR.
+  appear side-by-side in a table on the left and a Cp/Ct plot on the right.
 - **2D axisymmetric open turbine** → generate the domain, resolution region,
   actuator disk, and hub as STEP files and one open-turbine assembly, without
   creating a duct. Run FreeCAD, the packaged SpaceClaim script, ANSYS Meshing,
   and Fluent/BEM to evaluate one design. Results stay in the selected project's
   candidate folder. The workflow hides the Design tab, has no genetic
   optimization controls, and always uses conservative CFD source
-  initialization; mesh study remains available.
+  initialization. Its Run panel also supports repeated CFD/BEM evaluations across a user-defined TSR range, with a switch between the run table and a Cp/Ct-versus-TSR plot; mesh study remains available.
 - **Mesh Study** → compare full CFD/BEM candidates using an evenly spaced sweep
   across the selected bounds. All enabled values advance together from their
   minimums to maximums.
@@ -208,22 +208,20 @@ src/opturbo/
 ├── geometry_worker.py             # Legacy FreeCAD worker launcher
 └── cfd_worker.py                  # Legacy Fluent/BEM worker launcher
 resources/
-├── spaceclaim/                    # Current workflow's recorded SpaceClaim script
-├── meshing/                       # Current workflow's ANSYS scripts
-├── workflows/axisymmetric_2d_open_turbine/ # Open-turbine CAD, mesh and Fluent case assets
-├── fluent/                        # Baseline case and UDF resources
-└── cfd_tables/                    # Blade, airfoil, and operating-point data
+└── workflows/
+    ├── axisymmetric_2d/            # Ducted CAD, mesh, Fluent/UDF and BEM tables
+    └── axisymmetric_2d_open_turbine/ # Open CAD, mesh, case, UDF and BEM tables
 ```
 
 The **Project** tab selects a workflow. The selected ID is saved in
 `opturbo_project.json`; older project files without an ID load as
 `axisymmetric_2d`. `workflows/selection.py` is the small, explicit map used to
 create that workflow's runner. Each workflow owns its geometry, CAD, meshing,
-solver adapters, and resource-root choice. The existing 2D resources remain at
-their established `resources/` paths because the recorded SpaceClaim script and
-external tooling depend on those paths. New workflows can keep their assets in
-`resources/workflows/<workflow_id>/` and select that directory in their own
-workflow definition.
+solver adapters, and resource-root choice. Every workflow loads its own files
+from `resources/workflows/<workflow_id>/`; shared UDF and BEM-table assets are
+copied into each workflow folder so one workflow can run without reading the
+other workflow's resources. The recorded ducted SpaceClaim script keeps its
+required handoff paths unchanged.
 The project model also preserves per-workflow options in
 `workflow_settings[workflow_id]` for later workflow-specific settings.
 

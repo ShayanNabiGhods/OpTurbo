@@ -17,6 +17,11 @@ class Axisymmetric2DOpenTurbineWorkflow:
     title = "2D axisymmetric open turbine"
     run_only = True
 
+    @property
+    def resources(self) -> Path:
+        """Return the open-turbine workflow's self-contained resource directory."""
+        return self.application_root / "resources" / "workflows" / self.workflow_id
+
     def create_runner(
         self,
         emit: Callable[[str], None] = print,

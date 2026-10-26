@@ -19,13 +19,8 @@ class Axisymmetric2DWorkflow:
 
     @property
     def resources(self) -> Path:
-        """Return the current workflow's resource directory.
-
-        The existing resource tree stays in place so recorded SpaceClaim files,
-        vendor assets, and external scripts keep their established paths.
-        Future workflows can return a different directory from this property.
-        """
-        return self.application_root / "resources"
+        """Return the resources packaged specifically for the ducted workflow."""
+        return self.application_root / "resources" / "workflows" / self.workflow_id
 
     def create_runner(
         self,

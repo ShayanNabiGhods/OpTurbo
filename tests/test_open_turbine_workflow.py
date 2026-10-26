@@ -45,7 +45,8 @@ class OpenTurbineWorkflowTests(unittest.TestCase):
     def test_packaged_mesh_script_uses_no_duct_controls(self):
         runner = get_workflow("axisymmetric_2d_open_turbine", APP_ROOT).create_runner()
         script = runner._mesh_script(
-            ProjectConfig(), OpenTurbineParameters(), WORKFLOW_RESOURCES / "mesh_script.py")
+            ProjectConfig(), OpenTurbineParameters(),
+            WORKFLOW_RESOURCES / "meshing" / "mesh_script.py")
         self.assertNotIn("DUCT", script)
         self.assertNotIn("duct-sizing", script)
         self.assertIn("resolution-sizing", script)
@@ -86,6 +87,19 @@ class OpenTurbineWorkflowTests(unittest.TestCase):
         self.assertEqual(args[1:], (mesh, output))
         self.assertEqual(kwargs["baseline_case"], case)
         self.assertEqual(kwargs["case_name"], case.name)
+
+    def test_workflow_resource_trees_are_independent_and_complete(self):
+        ducted = get_workflow("axisymmetric_2d", APP_ROOT).resources
+        opened = get_workflow("axisymmetric_2d_open_turbine", APP_ROOT).resources
+        for resource in ("meshing/extract_mesh_artifact.py", "fluent/ad_sources.c",
+                         "fluent/libudf/src/ad_sources.c", "cfd_tables/ntnu_geometry.csv",
+                         "cfd_tables/s826_alpha.csv"):
+            with self.subTest(resource=resource):
+                self.assertTrue((ducted / resource).is_file())
+                self.assertTrue((opened / resource).is_file())
+                self.assertNotEqual((ducted / resource).resolve(), (opened / resource).resolve())
+        self.assertTrue((ducted / "spaceclaim/profile_assembly.scscript").is_file())
+        self.assertTrue((opened / "spaceclaim/open_turbine_assembly.scscript").is_file())
 
     def test_run_saves_all_stages_under_a_fresh_project_candidate(self):
         with tempfile.TemporaryDirectory() as folder:

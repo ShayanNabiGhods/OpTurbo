@@ -25,7 +25,8 @@ class SimpleBemTests(unittest.TestCase):
                     tsr_values(minimum, maximum, step)
 
     def test_bundled_rotor_runs_without_fluent(self):
-        resources = Path(__file__).parents[1] / "resources" / "cfd_tables"
+        resources = (Path(__file__).parents[1] / "resources" / "workflows"
+                     / "axisymmetric_2d" / "cfd_tables")
         blade = load_blade(resources, stations=12)
         airfoil = load_airfoil(resources)
         flow = Flow(10.0, 1.187, 1.81e-5)

@@ -13,6 +13,8 @@ tests/
 ├── test_overlap.py         # Same-generation preparation/CFD overlap rules
 ├── test_tip_loss.py        # BEM loss factors and saved project settings
 ├── test_simple_bem.py      # Standalone induction solver and TSR sweep
+├── test_open_tsr_sweep_worker.py # CFD/BEM TSR operating-point setup
+├── test_open_turbine_workflow.py # Open workflow stages and local resources
 ├── test_turbulence_ui.py   # CFD settings and turbulence UI choices
 ├── test_monitor_plot.py    # Plot axes, scaling and sparse result points
 └── README.md               # This test map

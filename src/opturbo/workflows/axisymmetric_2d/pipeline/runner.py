@@ -28,7 +28,8 @@ class PipelineRunner(MeshStudyPipelineMixin):
                  cancel: Callable[[], bool] | None = None,
                  resources: Path | None = None):
         self.root = Path(application_root)
-        self.resources = Path(resources) if resources is not None else self.root / "resources"
+        self.resources = (Path(resources) if resources is not None else
+                          self.root / "resources" / "workflows" / "axisymmetric_2d")
         self.emit = emit
         self.cancel = cancel
         self.previous_candidate_sources: Path | None = None

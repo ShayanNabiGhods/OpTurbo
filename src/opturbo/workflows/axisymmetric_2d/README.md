@@ -25,6 +25,8 @@ enabled mesh value traverses its requested bounds together; integer inflation
 layer counts round upward. Implementations for each stage are described in the
 README files inside `geometry/`, `cfd/`, and `pipeline/`.
 
-The workflow uses the established repository `resources/` directory to keep
-the recorded SpaceClaim script and ANSYS input paths stable. Generated
-candidate artifacts belong in the selected project output folder.
+The workflow loads bundled inputs from
+`resources/workflows/axisymmetric_2d/`. Its SpaceClaim script, Meshing scripts,
+Fluent/UDF files, and CFD tables are workflow-local copies. The recorded
+SpaceClaim script's fixed handoff paths remain unchanged. Generated candidate
+artifacts belong in the selected project output folder.

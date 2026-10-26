@@ -5,6 +5,7 @@ from tkinter import ttk
 
 from ..models import GaSettings
 from ..objectives import OBJECTIVES
+from .plot import LinePlot
 from .widgets import ScrollableFrame
 
 
@@ -25,16 +26,34 @@ class OptimizationViewMixin:
         pane.add(results, weight=2)
         self.run_only_note = ttk.Label(
             settings,
-            text=("Run the open-turbine workflow once to evaluate performance. Each run is "
+            text=("Run one open-turbine case or sweep tip-speed ratio. Each point is "
                   "saved as a separate candidate with geometry, mesh, Fluent/BEM results, and logs."),
             style="Subtitle.TLabel", wraplength=340, justify="left",
         )
         self.run_only_note.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(4, 12))
+        self.run_sweep_frame = ttk.LabelFrame(settings, text="CFD/BEM TSR sweep", padding=8)
+        self.run_sweep_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        self.run_tsr_min_var = tk.StringVar(value="4")
+        self.run_tsr_max_var = tk.StringVar(value="8")
+        self.run_tsr_step_var = tk.StringVar(value="0.5")
+        for row, (label, variable) in enumerate((
+            ("Minimum TSR", self.run_tsr_min_var),
+            ("Maximum TSR", self.run_tsr_max_var),
+            ("TSR interval", self.run_tsr_step_var),
+        )):
+            ttk.Label(self.run_sweep_frame, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            ttk.Entry(self.run_sweep_frame, textvariable=variable, width=12,
+                      validate="key", validatecommand=self.numeric_entry_validate).grid(
+                row=row, column=1, sticky="ew", padx=(8, 0), pady=2)
+        self.run_sweep_button = ttk.Button(
+            self.run_sweep_frame, text="Run CFD/BEM TSR sweep", command=self._run_tsr_sweep)
+        self.run_sweep_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.run_sweep_frame.columnconfigure(1, weight=1)
         self.ga_settings_frame = ttk.LabelFrame(settings, text="Genetic optimization settings", padding=4)
-        self.ga_settings_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.ga_settings_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
         self._add_dataclass_form(self.ga_settings_frame, "ga", GaSettings, inline_help=False)
         actions = ttk.Frame(settings)
-        actions.grid(row=2, column=0, columnspan=3, sticky="ew", pady=16)
+        actions.grid(row=3, column=0, columnspan=3, sticky="ew", pady=16)
         self.single_button = ttk.Button(actions, text="Evaluate current design", command=self._run_single)
         self.single_button.pack(fill="x", pady=3)
         self.ga_actions = ttk.Frame(actions)
@@ -52,13 +71,19 @@ class OptimizationViewMixin:
         self.results_title.pack(anchor="w")
         self.progress = ttk.Progressbar(results, mode="determinate")
         self.progress.pack(fill="x", pady=8)
-        columns = ("evaluation", "generation", "candidate", "cp", "ct", "cp_normalized", "ct_normalized", "status")
-        results_table = ttk.Frame(results)
-        results_table.pack(fill="both", expand=True)
+        columns = ("evaluation", "generation", "candidate", "tsr", "cp", "ct", "cp_normalized", "ct_normalized", "status")
+        self.run_results_notebook = ttk.Notebook(results)
+        self.run_results_notebook.pack(fill="both", expand=True)
+        results_table = ttk.Frame(self.run_results_notebook, padding=(0, 0, 0, 4))
+        run_plot_page = ttk.Frame(self.run_results_notebook)
+        self.run_results_notebook.add(results_table, text="Run table")
+        self.run_results_notebook.add(run_plot_page, text="Cp / Ct vs TSR")
+        self.run_plot_page = run_plot_page
         self.results_tree = ttk.Treeview(results_table, columns=columns, show="headings", height=16)
-        self.run_only_columns = ("evaluation", "cp", "ct", "status")
+        self.run_only_columns = ("evaluation", "tsr", "cp", "ct", "status")
         headings = {"cp_normalized": "Cp normalized", "ct_normalized": "Ct normalized"}
-        widths = (70, 70, 70, 85, 85, 110, 110, 150)
+        headings.update({"evaluation": "Evaluation", "tsr": "TSR", "cp": "Cp", "ct": "Ct"})
+        widths = (75, 80, 80, 80, 90, 90, 120, 120, 150)
         for name, width in zip(columns, widths):
             self.results_tree.heading(name, text=headings.get(name, name.replace("_", " ").title()))
             self.results_tree.column(name, width=width, anchor="center")
@@ -68,6 +93,12 @@ class OptimizationViewMixin:
         results_scroll.grid(row=0, column=1, sticky="ns")
         results_table.rowconfigure(0, weight=1)
         results_table.columnconfigure(0, weight=1)
+        self.run_tsr_plot = LinePlot(
+            run_plot_page, "Open-turbine CFD/BEM sweep", "Tip-speed ratio, TSR (-)",
+            "Coefficient (-)", markers=True, smooth=False, y_step=0.1,
+            y_max=1.0, x_step=1.0, height=360,
+        )
+        self.run_tsr_plot.pack(fill="both", expand=True)
         self.best_var = tk.StringVar(
             value=f"Best {OBJECTIVES.get(self.config_model.ga.objective, 'objective')}: —")
         ttk.Label(results, textvariable=self.best_var, style="Title.TLabel").pack(anchor="w", pady=10)
