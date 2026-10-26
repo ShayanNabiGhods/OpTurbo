@@ -3,7 +3,8 @@
 #include <stdlib.h>
 
 /* -----------------------------------------------------------------
-   Single actuator disk zone (cell zone ID = 7)
+   Actuator-disk source UDF. Fluent applies each source through its
+   cell-zone hook; no numeric zone ID is used by this file.
 
    Unlike the previous 27-zone model, all BEM annuli now live inside
    ONE Fluent cell zone. The radial load distribution is recovered by
@@ -16,8 +17,6 @@
      - source hooks: axial-velocity source  <- Sx_st
                      swirl-velocity source  <- Sw_st
    ----------------------------------------------------------------- */
-#define AD_ZONE_ID 10
-
 /* -----------------------------------------------------------------
    Source term storage (dynamically allocated, arbitrary station count)
    r[]  - radial coordinate of each BEM station              [m]
@@ -136,8 +135,7 @@ DEFINE_ON_DEMAND(read_ad_sources)
 
     sources_loaded = 1;
 
-    Message("\n[SUCCESS] Source terms loaded for %d stations on zone %d\n",
-            N_STATIONS, AD_ZONE_ID);
+    Message("\n[SUCCESS] Source terms loaded for %d stations\n", N_STATIONS);
     Message("========================================\n\n");
 }
 
@@ -233,7 +231,6 @@ DEFINE_ON_DEMAND(display_ad_sources)
 
     Message("\n========================================\n");
     Message("   Current Actuator Disk Source Terms\n");
-    Message("   Zone ID: %d\n", AD_ZONE_ID);
     Message("========================================\n");
 
     if (!sources_loaded)
