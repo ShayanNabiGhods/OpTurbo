@@ -61,7 +61,7 @@ class OpTurboWindow(
     def __init__(self):
         super().__init__()
         self.numeric_entry_validate = (self.register(self._validate_numeric_entry), "%P")
-        self.title("OpTurbo V0.3.2")
+        self.title("OpTurbo V0.3.4")
         self.geometry("1280x820")
         self.minsize(1050, 680)
         self.config_model = ProjectConfig()
