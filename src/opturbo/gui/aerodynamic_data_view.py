@@ -185,7 +185,12 @@ class AerodynamicDataViewMixin:
         columns = tuple(f"column_{index}" for index in range(column_count))
         self.cfd_table_tree.configure(columns=columns)
         for index, column in enumerate(columns):
-            title = expected[index] if index < len(expected) else f"Value {index + 1}"
+            if filename == "s826_re.csv":
+                title = f"Re {index + 1}"
+            elif filename in {"s826_cl.csv", "s826_cd.csv"}:
+                title = f"Values {index + 1}"
+            else:
+                title = expected[index] if index < len(expected) else f"Values {index + 1}"
             self.cfd_table_tree.heading(column, text=title)
             self.cfd_table_tree.column(column, width=140, minwidth=85, anchor="center", stretch=True)
         self.cfd_table_tree.delete(*self.cfd_table_tree.get_children())
