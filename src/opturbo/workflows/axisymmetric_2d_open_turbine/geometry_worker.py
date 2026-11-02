@@ -23,9 +23,13 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="STEP output folder")
     parser.add_argument("--config", required=True, help="JSON file with open-turbine dimensions")
     parser.add_argument("--freecad", required=True, help="FreeCAD command-line executable")
+    parser.add_argument("--openfoam-surface", action="store_true",
+                        help="also export the revolved hub STL and profile for OpenFOAM")
     args = parser.parse_args()
     try:
-        from opturbo.workflows.axisymmetric_2d_open_turbine.geometry.build_case import build_open_case
+        from opturbo.workflows.axisymmetric_2d_open_turbine.geometry.build_case import (
+            build_open_case, export_openfoam_hub_surface,
+        )
     except ModuleNotFoundError as error:
         if error.name not in {"FreeCAD", "Part"}:
             raise
@@ -34,6 +38,10 @@ def main() -> None:
     parameters = OpenTurbineParameters(**json.loads(Path(args.config).read_text(encoding="utf-8")))
     for path in build_open_case(parameters, Path(args.out)):
         print(f"Created: {path}")
+    if args.openfoam_surface:
+        surface = export_openfoam_hub_surface(
+            parameters, Path(args.out) / "openfoam_hub.stl")
+        print(f"Created: {surface}")
 
 
 if __name__ == "__main__":

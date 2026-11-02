@@ -2,7 +2,8 @@
 
 from dataclasses import fields, replace
 
-from ..models import AccessibilitySettings, CfdSettings, GaSettings, GeometrySettings, MeshSettings, ProjectConfig, ToolPaths, VariableSpec
+from ..models import (AccessibilitySettings, CfdSettings, GaSettings, GeometrySettings,
+                      MeshSettings, OpenFoamSettings, ProjectConfig, ToolPaths, VariableSpec)
 from ..objectives import OBJECTIVES
 from ..workflows.axisymmetric_2d.geometry.parameters import (
     nested_parameters,
@@ -50,6 +51,7 @@ class ConfigEditorMixin:
             workflow_settings=dict(self.config_model.workflow_settings),
             geometry=build("geometry", GeometrySettings), mesh=build("mesh", MeshSettings),
             cfd=build("cfd", CfdSettings), ga=build("ga", GaSettings),
+            openfoam=build("openfoam", OpenFoamSettings),
             accessibility=AccessibilitySettings(theme=self.theme_var.get(), text_scale=int(self.text_scale_var.get()),
                                                 high_contrast=self.high_contrast_var.get(), accent_color=self.accent_var.get(),
                                                 candidate_marker_size=int(self.candidate_marker_size_var.get()),

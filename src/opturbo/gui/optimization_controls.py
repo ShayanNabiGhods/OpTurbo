@@ -21,6 +21,9 @@ class OptimizationControlsMixin:
     def _apply_workflow_mode(self, running: bool = False) -> None:
         """Expose controls supported by the selected workflow's implemented stages."""
         run_only = self._run_only_selected()
+        workflow_id = (self.workflow_id_var.get() if hasattr(self, "workflow_id_var")
+                       else self.config_model.workflow_id)
+        openfoam = workflow_id == "axisymmetric_2d_open_turbine_openfoam"
         if hasattr(self, "design_tab"):
             self.notebook.tab(self.design_tab, state="hidden" if run_only else "normal")
         if hasattr(self, "mesh_study_tab"):
@@ -28,6 +31,9 @@ class OptimizationControlsMixin:
         if hasattr(self, "workflow_pages"):
             self.workflow_pages.tab(self.mesh_settings_page, state="normal")
             self.workflow_pages.tab(self.cfd_settings_page, state="normal")
+            if hasattr(self, "openfoam_settings_page"):
+                self.workflow_pages.tab(self.openfoam_settings_page,
+                                        state="normal" if openfoam else "hidden")
         setting_controls = getattr(self, "setting_controls", {})
         for (section, name), controls in setting_controls.items():
             is_hidden_for_open_workflow = (
@@ -38,6 +44,26 @@ class OptimizationControlsMixin:
                 (section == "cfd" and name in {
                     "source_initialization", "previous_source_weight"})
             )
+            if openfoam:
+                is_hidden_for_open_workflow = is_hidden_for_open_workflow or (
+                    (section == "tools" and name in {"spaceclaim", "workbench", "fluent"}) or
+                    (section == "mesh" and name in {
+                        "growth_rate", "cpu_cores", "method", "curvature_angle_deg",
+                        "inflation_enabled", "inflation_layers", "inflation_max_thickness_cm",
+                    }) or
+                    (section == "cfd" and name in {
+                        "processors", "pressure_scheme", "momentum_scheme", "swirl_scheme",
+                        "k_scheme", "epsilon_scheme", "omega_scheme", "nut_scheme",
+                        "pressure_velocity_coupling", "residual_continuity",
+                        "residual_x_velocity", "residual_y_velocity", "residual_swirl",
+                        "residual_k", "residual_epsilon", "residual_omega", "residual_nut",
+                    })
+                )
+            elif section == "tools" and name in {
+                "wsl_executable", "wsl_distribution", "openfoam_bashrc", "wsl_mount_root",
+                "wsl_work_root",
+            }:
+                is_hidden_for_open_workflow = True
             if not is_hidden_for_open_workflow:
                 continue
             for control in controls:
@@ -100,11 +126,18 @@ class OptimizationControlsMixin:
         if hasattr(self, "mesh_study_description"):
             self._apply_mesh_study_workflow_mode(run_only)
         if hasattr(self, "workflow_summary_label"):
-            summary = ("FreeCAD → SpaceClaim → Mesh → Fluent/BEM evaluation" if run_only else
-                       "Geometry → SpaceClaim → Mesh → CFD/BEM → Genetic optimization")
+            summary = (
+                "FreeCAD → OpenFOAM meshing → OpenFOAM CFD/BEM evaluation" if openfoam else
+                "FreeCAD → SpaceClaim → Mesh → Fluent/BEM evaluation" if run_only else
+                "Geometry → SpaceClaim → Mesh → CFD/BEM → Genetic optimization"
+            )
             self.workflow_summary_label.configure(text=summary)
         if hasattr(self, "workflow_note_label"):
             note = (
+                "Each run saves FreeCAD geometry, the OpenFOAM mesh and case, solver logs, "
+                "and OpenFOAM/BEM results in a new project candidate. OpenFOAM runs inside "
+                "the configured WSL distribution. Mesh study remains available."
+                if openfoam else
                 "Each run saves geometry, SpaceClaim, mesh, and Fluent/BEM results in a "
                 "new candidate folder in the selected project. No run files are written "
                 "under C:\\OpTurbo\\Temp Files. Mesh study remains available."

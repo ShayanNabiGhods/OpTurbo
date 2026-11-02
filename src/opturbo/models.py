@@ -14,13 +14,14 @@ from .domain.design import (
     default_parsec_variables,
 )
 from .domain.mesh import MeshSettings
+from .domain.openfoam import OpenFoamSettings
 from .domain.optimization import GaSettings
 from .domain.project import ProjectConfig
 from .domain.tools import ToolPaths
 
 __all__ = [
     "AccessibilitySettings", "CfdSettings", "GaSettings", "GeometrySettings",
-    "MeshSettings", "ProjectConfig", "ToolPaths", "VariableSpec",
+    "MeshSettings", "OpenFoamSettings", "ProjectConfig", "ToolPaths", "VariableSpec",
     "default_airfoil_variables", "default_design_variables",
     "default_flanged_variables", "default_parsec_variables",
 ]

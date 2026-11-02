@@ -14,14 +14,17 @@ resources/
     │   ├── meshing/
     │   ├── fluent/
     │   └── cfd_tables/
-    └── axisymmetric_2d_open_turbine/
+    ├── axisymmetric_2d_open_turbine/
         ├── spaceclaim/
         ├── meshing/
         ├── fluent/
         └── cfd_tables/
+    └── axisymmetric_2d_open_turbine_openfoam/
+        └── cfd_tables/
 ```
 
-The two Fluent/UDF and CFD-table trees are independent copies. Update both
-copies deliberately when a shared engineering input changes. The ducted
+The Fluent/UDF and CFD-table trees are independent copies. The OpenFOAM
+workflow keeps another local copy of the BEM tables. Update each workflow's
+copy deliberately when a shared engineering input changes. The ducted
 recorded SpaceClaim script must retain its fixed STEP/SCDOC paths and object
 selections. See each workflow README for the files and their roles.

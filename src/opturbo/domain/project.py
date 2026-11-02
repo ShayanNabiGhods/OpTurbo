@@ -8,6 +8,7 @@ from .accessibility import AccessibilitySettings
 from .cfd import CfdSettings
 from .design import GeometrySettings, VariableSpec, default_design_variables
 from .mesh import MeshSettings
+from .openfoam import OpenFoamSettings
 from .optimization import GaSettings
 from .tools import ToolPaths
 
@@ -24,6 +25,7 @@ class ProjectConfig:
     geometry: GeometrySettings = field(default_factory=GeometrySettings)
     mesh: MeshSettings = field(default_factory=MeshSettings)
     cfd: CfdSettings = field(default_factory=CfdSettings)
+    openfoam: OpenFoamSettings = field(default_factory=OpenFoamSettings)
     ga: GaSettings = field(default_factory=GaSettings)
     accessibility: AccessibilitySettings = field(default_factory=AccessibilitySettings)
     design_variables: list[VariableSpec] = field(
@@ -78,6 +80,7 @@ class ProjectConfig:
             geometry=geometry,
             mesh=MeshSettings(**data.get("mesh", {})),
             cfd=CfdSettings(**cfd_data),
+            openfoam=OpenFoamSettings(**data.get("openfoam", {})),
             ga=GaSettings(**data.get("ga", {})),
             accessibility=AccessibilitySettings(**data.get("accessibility", {})),
             design_variables=variables or defaults,

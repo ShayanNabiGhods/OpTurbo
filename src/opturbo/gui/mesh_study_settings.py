@@ -11,10 +11,24 @@ from .constants import LABELS, MESH_STUDY_SIZE_FIELDS
 
 
 class MeshStudySettingsMixin:
+    @staticmethod
+    def _openfoam_mesh_fields() -> set[str]:
+        """Return mesh controls consumed by the OpenFOAM mesher."""
+        return {"global_size_cm", "resolution_size_cm", "hub_size_cm"}
+
+    def _openfoam_mesh_study_selected(self) -> bool:
+        workflow_id = (self.workflow_id_var.get() if hasattr(self, "workflow_id_var")
+                       else self.config_model.workflow_id)
+        return workflow_id == "axisymmetric_2d_open_turbine_openfoam"
+
     def _get_mesh_study_enabled(self) -> dict[str, bool]:
         enabled = {name: variable.get() for name, variable in self.mesh_study_enabled.items()}
         if getattr(self, "_run_only_selected", lambda: False)():
             enabled["duct_size_cm"] = False
+        if self._openfoam_mesh_study_selected():
+            for name in enabled:
+                if name not in self._openfoam_mesh_fields():
+                    enabled[name] = False
         return enabled
 
     def _refresh_mesh_study_controls(self) -> None:
@@ -30,27 +44,57 @@ class MeshStudySettingsMixin:
 
     def _apply_mesh_study_workflow_mode(self, run_only: bool) -> None:
         """Hide duct sizing and normalized duct metrics for the open workflow."""
+        openfoam = self._openfoam_mesh_study_selected()
+        visible_fields = self._openfoam_mesh_fields() if openfoam else set(MESH_STUDY_SIZE_FIELDS)
         name = "duct_size_cm"
-        widgets = [self.mesh_study_checks.get(name), self.mesh_study_labels.get(name),
-                   self.mesh_study_controls.get(name),
-                   *self.mesh_study_bound_controls.get(name, ())]
-        for widget in widgets:
-            if widget is None:
-                continue
-            if run_only:
-                widget.grid_remove()
-            else:
-                widget.grid()
+        if run_only:
+            visible_fields.discard("duct_size_cm")
+        for field_name in MESH_STUDY_SIZE_FIELDS:
+            widgets = [self.mesh_study_checks.get(field_name), self.mesh_study_labels.get(field_name),
+                       self.mesh_study_controls.get(field_name),
+                       *self.mesh_study_bound_controls.get(field_name, ())]
+            for widget in widgets:
+                if widget is None:
+                    continue
+                if field_name in visible_fields:
+                    widget.grid()
+                else:
+                    widget.grid_remove()
+        for name in ("method", "cpu_cores"):
+            for widget in (self.mesh_study_labels.get(name), self.mesh_study_controls.get(name)):
+                if widget is not None:
+                    if openfoam:
+                        widget.grid_remove()
+                    else:
+                        widget.grid()
         if run_only:
             if not hasattr(self, "_saved_duct_mesh_enabled"):
-                self._saved_duct_mesh_enabled = self.mesh_study_enabled[name].get()
-            self.mesh_study_enabled[name].set(False)
+                self._saved_duct_mesh_enabled = self.mesh_study_enabled["duct_size_cm"].get()
+            self.mesh_study_enabled["duct_size_cm"].set(False)
         elif hasattr(self, "_saved_duct_mesh_enabled"):
-            self.mesh_study_enabled[name].set(self._saved_duct_mesh_enabled)
+            self.mesh_study_enabled["duct_size_cm"].set(self._saved_duct_mesh_enabled)
             del self._saved_duct_mesh_enabled
+        if openfoam:
+            if not hasattr(self, "_saved_openfoam_mesh_enabled"):
+                self._saved_openfoam_mesh_enabled = {
+                    name: variable.get() for name, variable in self.mesh_study_enabled.items()
+                }
+            for name, variable in self.mesh_study_enabled.items():
+                if name not in self._openfoam_mesh_fields():
+                    variable.set(False)
+        elif hasattr(self, "_saved_openfoam_mesh_enabled"):
+            for name, value in self._saved_openfoam_mesh_enabled.items():
+                if name == "duct_size_cm":
+                    continue
+                self.mesh_study_enabled[name].set(value)
+            del self._saved_openfoam_mesh_enabled
         self._refresh_mesh_study_controls()
         if hasattr(self, "mesh_study_description"):
             description = (
+                "Compare OpenFOAM global, resolution-region, and hub mesh sizes for one "
+                "open-turbine design. Each candidate runs the body-fitted OpenFOAM blockMesh and "
+                "OpenFOAM/BEM; results are saved with the project."
+                if openfoam else
                 "Compare mesh settings for one open-turbine design. Each candidate runs "
                 "mesh generation and Fluent/BEM evaluation; results are saved with the project."
                 if run_only else
@@ -60,6 +104,8 @@ class MeshStudySettingsMixin:
             self.mesh_study_description.configure(text=description)
         if hasattr(self, "mesh_study_tree"):
             columns = self.mesh_study_tree["columns"]
+            self.mesh_study_tree.heading(
+                "fluent_s", text="OpenFOAM/BEM (s)" if openfoam else "Fluent/BEM (s)")
             self.mesh_study_tree.configure(
                 displaycolumns=("id", "status", "cells", "mesh_s", "fluent_s", "total_s", "outer", "cp", "ct")
                 if run_only else columns

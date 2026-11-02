@@ -80,7 +80,9 @@ class SettingsFormMixin:
             if section == "tools" and item.name == "handoff_dir":
                 widget.configure(state="readonly")
                 ttk.Label(parent, text="Protected", foreground="#a34a2a").grid(row=row, column=2, padx=4)
-            elif browse_paths:
+            elif browse_paths and item.name in {
+                "freecad", "spaceclaim", "workbench", "fluent", "wsl_executable",
+            }:
                 ttk.Button(parent, text="Browse…", command=lambda var=variable: self._browse_tool(var)).grid(row=row, column=2, padx=4)
             row += 2 if inline_help else 1
         parent.columnconfigure(1, weight=1)

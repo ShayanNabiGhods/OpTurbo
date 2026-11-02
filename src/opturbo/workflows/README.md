@@ -34,3 +34,10 @@ baseline case, shares the existing actuator-disk UDF and BEM tables, and stores
 all four stages under each selected-project candidate without writing run
 folders under `C:\OpTurbo\Temp Files`. Its Run panel has no genetic optimization
 controls; mesh study remains available.
+
+`axisymmetric_2d_open_turbine_openfoam/` starts from the same duct-free FreeCAD
+geometry and workflow-local BEM tables, then builds a wedge mesh and runs
+OpenFOAM inside the configured WSL distribution. It is a separate run-only
+workflow so the existing Fluent-based open-turbine workflow keeps its original
+stages and project files. The OpenFOAM Foundation 14 case writer and candidate
+runner are described in that workflow's README.

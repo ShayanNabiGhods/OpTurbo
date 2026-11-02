@@ -58,7 +58,10 @@ class MeshStudyTableMixin:
             mesh = row.get("mesh_settings", {})
             lines.append("Mesh settings:")
             for item in fields(MeshSettings):
-                if item.name == "duct_size_cm" and self._run_only_selected():
+                if (item.name == "duct_size_cm" and self._run_only_selected()) or (
+                    self._openfoam_mesh_study_selected()
+                    and item.name not in self._openfoam_mesh_fields()
+                ):
                     continue
                 value = mesh.get(item.name, "—")
                 lines.append(f"  {LABELS.get(item.name, item.name)}: {value}")

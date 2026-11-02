@@ -156,7 +156,7 @@ class ProjectViewMixin:
         self.save_dir_var.set(self.config_model.save_dir)
         self.workflow_id_var.set(self.config_model.workflow_id)
         self.workflow_label_var.set(get_workflow(self.config_model.workflow_id, APP_ROOT).title)
-        for section in ("tools", "geometry", "mesh", "cfd", "ga"):
+        for section in ("tools", "geometry", "mesh", "cfd", "openfoam", "ga"):
             settings = getattr(self.config_model, section)
             for item in fields(settings):
                 variable = self.field_vars[(section, item.name)]

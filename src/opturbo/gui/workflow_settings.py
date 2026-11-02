@@ -3,7 +3,7 @@
 from dataclasses import fields
 from tkinter import ttk
 
-from ..models import CfdSettings, GeometrySettings, MeshSettings
+from ..models import CfdSettings, GeometrySettings, MeshSettings, OpenFoamSettings
 from .widgets import ScrollableFrame
 
 
@@ -17,7 +17,8 @@ class WorkflowSettingsMixin:
         pages.pack(fill="both", expand=True)
         for title, section, cls in (("Geometry", "geometry", GeometrySettings),
                                     ("Meshing", "mesh", MeshSettings),
-                                    ("CFD / BEM", "cfd", CfdSettings)):
+                                    ("CFD / BEM", "cfd", CfdSettings),
+                                    ("OpenFOAM", "openfoam", OpenFoamSettings)):
             page = ScrollableFrame(pages)
             body = page.body
             pages.add(page, text=title)
@@ -25,6 +26,8 @@ class WorkflowSettingsMixin:
                 self.mesh_settings_page = page
             elif section == "cfd":
                 self.cfd_settings_page = page
+            elif section == "openfoam":
+                self.openfoam_settings_page = page
             # Initialize a persistent variable for every setting before placing
             # fields into separate groups (including currently hidden equations).
             self._add_dataclass_form(body, section, cls,
@@ -49,7 +52,7 @@ class WorkflowSettingsMixin:
                 self.field_vars[("mesh", "inflation_enabled")].trace_add(
                     "write", self._refresh_inflation_controls)
                 self._refresh_inflation_controls()
-            else:
+            elif section == "cfd":
                 groups = (
                     ("Flow and rotor", ("flow_speed_m_s", "density_kg_m3", "viscosity_pa_s", "rotor_radius_m", "hub_radius_m", "blades", "omega_rad_s", "pitch_deg")),
                     ("BEM correction", ("stations", "tip_loss_model")),
@@ -73,6 +76,8 @@ class WorkflowSettingsMixin:
                                          inline_help=False)
                 self.field_vars[("cfd", "tip_loss_model")].trace_add("write", self._refresh_bontempo_controls)
                 self._refresh_bontempo_controls()
+            else:
+                self._add_dataclass_form(body, section, cls, two_columns=True)
 
     def _refresh_bontempo_controls(self, *_args: object) -> None:
         """Gray empirical g coefficients unless the Bontempo correction is selected."""

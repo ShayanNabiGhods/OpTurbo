@@ -17,6 +17,7 @@ def validate_project_settings(config: ProjectConfig) -> None:
         ("geometry", config.geometry),
         ("mesh", config.mesh),
         ("cfd", config.cfd),
+        ("openfoam", config.openfoam),
         ("ga", config.ga),
     ):
         for name, value in vars(settings).items():
@@ -66,6 +67,16 @@ def validate_project_settings(config: ProjectConfig) -> None:
         raise ValueError("Inflation must contain at least one layer.")
     if config.cfd.stations < 2 or config.cfd.max_outer_iterations < 1:
         raise ValueError("CFD stations and iteration counts are too small.")
+    if config.openfoam.max_global_cells < 1000:
+        raise ValueError("OpenFOAM maximum cell count must be at least 1000.")
+    if config.openfoam.solver_tolerance <= 0:
+        raise ValueError("OpenFOAM solver tolerance must be positive.")
+    if not 0 < config.openfoam.solver_relaxation <= 1:
+        raise ValueError("OpenFOAM solver relaxation must be greater than 0 and no more than 1.")
+    if not 0 < config.openfoam.turbulence_intensity < 1:
+        raise ValueError("OpenFOAM inlet turbulence intensity must be between 0 and 1.")
+    if not 0 < config.openfoam.wedge_angle_deg <= 15:
+        raise ValueError("OpenFOAM wedge angle must be greater than 0 and no more than 15 degrees.")
     if min(config.cfd.flow_speed_m_s, config.cfd.density_kg_m3,
            config.cfd.viscosity_pa_s, config.cfd.rotor_radius_m) <= 0:
         raise ValueError("Flow properties and rotor radius must be positive.")

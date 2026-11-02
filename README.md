@@ -2,9 +2,10 @@
 
 OpTurbo is a Windows desktop application for designing, evaluating, and
 optimizing ducted and open wind turbines. It connects a Tkinter interface to
-four-stage engineering workflows: FreeCAD geometry, SpaceClaim, ANSYS Meshing,
-and Fluent/BEM. Ducted designs can use the genetic algorithm; the open-turbine
-workflow runs one performance evaluation at a time and keeps mesh study.
+engineering workflows: FreeCAD geometry, CAD cleanup, meshing, and CFD/BEM.
+Ducted designs can use the genetic algorithm. Open-turbine workflows run
+performance evaluations and mesh studies, including an OpenFOAM path through
+WSL.
 
 ## Start the application
 
@@ -86,6 +87,15 @@ folder outside the source-code folder, for example
   candidate folder. The workflow hides the Design tab, has no genetic
   optimization controls, and always uses conservative CFD source
   initialization. Its Run panel also supports repeated CFD/BEM evaluations across a user-defined TSR range, with a switch between the run table and a Cp/Ct-versus-TSR plot; mesh study remains available.
+- **2D axisymmetric open turbine (OpenFOAM)** → reuse the open-turbine FreeCAD
+  geometry and its sampled hub profile, then run body-fitted `blockMesh`,
+  `checkMesh`, `simpleFoam`, and the OpTurbo BEM coupling in the selected WSL
+  distribution. Configure the WSL executable, distribution name, OpenFOAM
+  bashrc, Windows-drive mount root, and space-free WSL scratch folder on the
+  Project tab. OpenFOAM mesh and CFD settings, logs, iteration data, and results
+  are stored under each project candidate. This workflow supports the Run
+  panel, TSR sweeps, and mesh study; it does not use ANSYS or Fluent. See
+  [the OpenFOAM workflow setup guide](src/opturbo/workflows/axisymmetric_2d_open_turbine_openfoam/README.md).
 - **Mesh Study** → compare full CFD/BEM candidates using an evenly spaced sweep
   across the selected bounds. All enabled values advance together from their
   minimums to maximums.
@@ -124,6 +134,13 @@ project's standard candidate layout. Its mesh script uses domain, resolution,
 and hub sizing and omits duct sizing and duct-wall inflation. It uses the
 workflow's open-turbine Fluent baseline case and shares the ducted workflow's
 UDF and BEM tables. It creates no run directories under `C:\OpTurbo\Temp Files`.
+
+The **OpenFOAM open-turbine** workflow uses the FreeCAD hub profile to create a
+body-fitted wedge mesh with `blockMesh`, then couples `simpleFoam` to the
+existing BEM model. It executes through the configured WSL distribution and
+stores its case, solver logs, and results in the selected candidate. See the
+[setup guide](src/opturbo/workflows/axisymmetric_2d_open_turbine_openfoam/README.md)
+for WSL and OpenFOAM requirements.
 
 ### Overlap preparation
 
@@ -274,5 +291,6 @@ python -m unittest discover -s tests -v
 python -m compileall -q src run.py
 ```
 
-An end-to-end evaluation requires working installations and valid licenses for
-FreeCAD, SpaceClaim, ANSYS Workbench/Meshing, and Fluent.
+The ducted and Fluent open-turbine workflows require FreeCAD, SpaceClaim, ANSYS
+Workbench/Meshing, and Fluent. The OpenFOAM workflow requires FreeCAD, WSL, and
+an OpenFOAM installation available after sourcing the configured WSL bashrc.
